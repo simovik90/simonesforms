@@ -1,6 +1,12 @@
 {
-  "rewrites": [
-    { "source": "/api/forms", "destination": "/api/form" },
-    { "source": "/api/forms/:path*", "destination": "/api/form?__p=:path*" }
+  "routes": [
+    {
+      "src": "/api/forms/?",
+      "dest": "/api/form"
+    },
+    {
+      "src": "/api/forms/(.*)",
+      "dest": "/api/form?__p=$1"
+    }
   ]
 }

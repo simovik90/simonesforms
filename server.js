@@ -1,5 +1,7 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+if (!process.env.VERCEL) {
+  require('dotenv').config({ path: path.join(__dirname, '.env') });
+}
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -17,7 +19,6 @@ const https = require('https');
 const http = require('http');
 
 const app = express();
-const PORT = process.env.PORT || 3333;
 
 const AUTH_EMAIL = String(process.env.AUTH_EMAIL || 'simone@mscommunication.it').trim().toLowerCase();
 const AUTH_PASSWORD = String(process.env.AUTH_PASSWORD || '').trim();
@@ -966,14 +967,4 @@ function getFormsRouterDeps() {
   };
 }
 
-module.exports = { getFormsRouterDeps };
-
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log('');
-    console.log('  MyTypeform in ascolto su http://localhost:' + PORT);
-    console.log('  Link clienti: http://localhost:' + PORT + '/fill/FORM_ID');
-    console.log('  Pipeline e automazioni attive.');
-    console.log('');
-  });
-}
+module.exports = { app, getFormsRouterDeps };
