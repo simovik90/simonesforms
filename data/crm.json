@@ -1,0 +1,30 @@
+{
+  "lists": [],
+  "memberships": {},
+  "dealPipelines": [
+    {
+      "id": "p_1775217387900_40188w",
+      "name": "Mentoring",
+      "createdAt": "2026-04-03T11:56:27.900Z",
+      "stages": [
+        {
+          "id": "s_1775217387900_2ieup6",
+          "name": "Nuovo"
+        },
+        {
+          "id": "s_1775217387900_bwapiv",
+          "name": "In trattativa"
+        },
+        {
+          "id": "s_1775217387900_mqpcwh",
+          "name": "Vinto"
+        },
+        {
+          "id": "s_1775217387900_jz0z49",
+          "name": "Perso"
+        }
+      ]
+    }
+  ],
+  "deals": []
+}

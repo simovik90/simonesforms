@@ -1,0 +1,89 @@
+{
+  "f_1775062217462": [
+    {
+      "id": "r_1775149914873_bt5vvs74",
+      "date": "2026-04-02T17:11:54.873Z",
+      "answers": {
+        "q_1775063374346_zsu022mlx1s": "Simone",
+        "q_1775063392933_3s32u022xmy": "Vicario",
+        "q_1775063413690_9k2y32ug88": "simovik90@gmail.com",
+        "q_1775063430474_on447z2wqfl": "3343123399",
+        "q_1775062782994_4p6ohnn3kb": "So che dovrei distinguermi, ma ho paura di sbagliare e quindi o copio quello che fanno oppure mollo ancor prima di avere iniziato",
+        "q_1775062859465_xjpo7lahufq": "Procrastinare la pubblicazione perché ti perdi a inseguire l'ennesima \"strategia miracolosa\" appena scoperta in un podcast.",
+        "q_1775062892967_g30erxo046q": "Perché faccio tante cose e posso aiutare il mio target su più fronti, ma non so come dirlo. ",
+        "q_1775062925077_a753ijhxywf": "So perfettamente che andare virale e vendere, non sono sinonimi. Mi piacerebbe, ma non è la cosa a cui penso quando creo i contenuti. ",
+        "q_1775062960551_vtg5xbw8t9j": "Li analizzo nel dettaglio, ma mi perdo nei dati. Tempo di visualizzazione, retention, fonti di traffico, so cosa sono, ma non riesco a tradurli in azioni concrete che portino vendite.",
+        "q_1775062994291_zxjna28wjv": "La verità è che non ho una direzione e perdo ore a pensare cosa dovrei pubblicare, cerco idee, registro contenuti, ma nessuna richiesta.",
+        "q_1775063030963_x1rydbqye4l": "Farei di tutto per trattenere i clienti che ho, anche se so che non è fattibile lavorare all'infinito con loro. ",
+        "q_1775063065688_t1g2t7hpnl": "Di qualcuno che mi metta ordine nel caos e mi dia una mappa precisa da seguire per usare questo social in modo efficiente ed efficace.",
+        "q_1775063097805_r8edi00nv4l": "Moltissimi, li faccio, metto in pratica, ma poi l'entusiasmo svanisce perché inizio ad applicare e non vedo risultati subito, nonostante segua alla lettera.  ",
+        "q_1775063129309_w72jolcr9sk": "So che premia chi fa contenuti simili a quelli che già funzionano. Per questo replico i format dei profili che vanno forte nel mio settore.",
+        "q_1775063162469_g762sorgcn": "Ho provato a farmi un calendario editoriale almeno dieci volte. Dura massimo una settimana, poi salta tutto"
+      },
+      "quizScore": null,
+      "computedScore": {
+        "value": 1.3636363636363635,
+        "mode": "average",
+        "breakdown": [
+          {
+            "questionId": "q_1775062782994_4p6ohnn3kb",
+            "label": "Quando guardi i profili dei tuoi competitor di successo, qual è la prima reazione? primo pensiero non filtrato?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775062859465_xjpo7lahufq",
+            "label": "Sii onesta: qual è la tua \"cattiva abitudine\" più frequente su Tik Tok?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775062892967_g30erxo046q",
+            "label": "Se ti chiedessi: \"Perché dovrei scegliere proprio te?\", cosa risponderesti oggi?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775062925077_a753ijhxywf",
+            "label": "Come descriveresti il tuo rapporto con la \"Viralità\"?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775062960551_vtg5xbw8t9j",
+            "label": "Che rapporto hai con i dati e le statistiche del tuo profilo TikTok?",
+            "value": 3
+          },
+          {
+            "questionId": "q_1775062994291_zxjna28wjv",
+            "label": "\"Non ho tempo per i social\". Qual è la verità dietro questa frase?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775063030963_x1rydbqye4l",
+            "label": "Se domani sparissero i social, cosa resterebbe del tuo business?",
+            "value": 2
+          },
+          {
+            "questionId": "q_1775063065688_t1g2t7hpnl",
+            "label": "Di cosa hai veramente bisogno in questo momento per svoltare su Tik Tok?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775063097805_r8edi00nv4l",
+            "label": "Quanti corsi per i social hai acquistato e mai finito o applicato?",
+            "value": 1
+          },
+          {
+            "questionId": "q_1775063129309_w72jolcr9sk",
+            "label": " Cosa pensi di sapere su come funziona l'algoritmo di TikTok?",
+            "value": 2
+          },
+          {
+            "questionId": "q_1775063162469_g762sorgcn",
+            "label": "Come gestisci la pianificazione dei tuoi contenuti su TikTok?",
+            "value": 1
+          }
+        ]
+      },
+      "majorityResult": null,
+      "stage": "Nuovo"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "mytypeform",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js",
+    "serve-static": "npx serve . -p 3333"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  }
+}

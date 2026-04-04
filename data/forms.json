@@ -1,0 +1,335 @@
+[
+  {
+    "id": "f_1775062217462",
+    "title": "Perché il tuo profilo Tik Tok, non sta funzionando come vorresti?",
+    "questions": [
+      {
+        "id": "q_1775062428717_pvhccigisvf",
+        "type": "statement",
+        "text": "",
+        "statementTitle": "Perché il tuo profilo Tik Tok, non sta funzionando come vorresti?",
+        "statementBody": "\nTi sei formato, hai provato diverse strategie, hai investito in diversi corsi, ma i clienti non arrivano. \n\nAnche se fai tutto quello che ti hanno detto di fare e pubblichi con costanza, i clienti non arrivano e il tuo profilo non lavora per te. \n\nQuesto significa che probabilmente non è la piattaforma il problema, ma quello che viene prima: la ricerca, il posizionamento e diverse altre cose… \n\nFai questo quiz, e in 10 domande scopri cosa blocca i tuoi risultati su questo social.",
+        "statementTextAlign": "justify",
+        "statementVideoUrl": "https://www.youtube.com/shorts/sh864KZbpK0",
+        "questionVideoUrl": "https://www.youtube.com/shorts/sh864KZbpK0"
+      },
+      {
+        "id": "q_1775063374346_zsu022mlx1s",
+        "type": "short",
+        "text": "Nome"
+      },
+      {
+        "id": "q_1775063392933_3s32u022xmy",
+        "type": "short",
+        "text": "Cognome",
+        "sameSlideAsPrev": true
+      },
+      {
+        "id": "q_1775063413690_9k2y32ug88",
+        "type": "email",
+        "text": "Email",
+        "sameSlideAsPrev": true
+      },
+      {
+        "id": "q_1775063430474_on447z2wqfl",
+        "type": "short",
+        "text": "Numero di telefono",
+        "numberMin": null,
+        "numberMax": null,
+        "sameSlideAsPrev": true
+      },
+      {
+        "id": "q_1775062782994_4p6ohnn3kb",
+        "type": "choice",
+        "text": "Quando guardi i profili dei tuoi competitor di successo, qual è la prima reazione? primo pensiero non filtrato?",
+        "options": [
+          "So che dovrei distinguermi, ma ho paura di sbagliare e quindi o copio quello che fanno oppure mollo ancor prima di avere iniziato",
+          "Copio i formati, i ganci, la struttura, ma sui miei contenuti non succede niente. Vendiamo la stessa cosa, eppure a loro funziona e a me no. ",
+          "Mi sale la rabbia, perché dicono cose superficiali, non sono nemmeno così preparati, eppure hanno l'agenda piena e vendono il triplo di me.",
+          "Vorrei avere quella sicurezza, quella scioltezza davanti alla telecamera, ma non ci riesco proprio e mi sento bloccato."
+        ],
+        "logic": [],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      {
+        "id": "q_1775062859465_xjpo7lahufq",
+        "type": "choice",
+        "text": "Sii onesta: qual è la tua \"cattiva abitudine\" più frequente su Tik Tok?",
+        "options": [
+          "Procrastinare la pubblicazione perché ti perdi a inseguire l'ennesima \"strategia miracolosa\" appena scoperta in un podcast.",
+          "Passare ore a scorrere i “Per Te” cercando un audio o un formato da 'rubare' per non dover pensare a un contenuto originale.",
+          "Scrivere script lunghissimi e complessi che sembrano lezioni universitarie, per poi cancellare tutto perché \"manca ancora un dettaglio\".",
+          "Salvare centinaia di video utili che non riguarderai mai, usandoli come scudo per non accendere la telecamera e metterci la faccia."
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      {
+        "id": "q_1775062892967_g30erxo046q",
+        "type": "choice",
+        "text": "Se ti chiedessi: \"Perché dovrei scegliere proprio te?\", cosa risponderesti oggi?",
+        "options": [
+          "Perché faccio tante cose e posso aiutare il mio target su più fronti, ma non so come dirlo. ",
+          "Offro qualità, ascolto, attenzione al cliente, e tutto questo non riesco a trasmetterlo sui social.",
+          "Ho metodo, formazione, anni di esperienza nel mio settore, eppure mi sento bloccato.",
+          "Onestamente, non lo so ancora. Sento di avere valore, ma non riesco a capire cosa mi renda davvero diversa "
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      {
+        "id": "q_1775062925077_a753ijhxywf",
+        "type": "choice",
+        "text": "Come descriveresti il tuo rapporto con la \"Viralità\"?",
+        "options": [
+          "So perfettamente che andare virale e vendere, non sono sinonimi. Mi piacerebbe, ma non è la cosa a cui penso quando creo i contenuti. ",
+          "Mi capita spesso di mandare dei video virali, ma nonostante questo, non ho richieste per il mio prodotto. Non capisco cosa sbaglio",
+          "Punto a far categorizzare i contenuti dall’algoritmo di Tik Tok, in modo che il mio contenuto possa raccogliere visualizzazioni e anche vendite nel lungo periodo, perché ho toccato un bisogno o un desiderio del mio target. ",
+          "Un sogno nel cassetto che non so se riuscirò mai a realizzare"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      {
+        "id": "q_1775062960551_vtg5xbw8t9j",
+        "type": "choice",
+        "text": "Che rapporto hai con i dati e le statistiche del tuo profilo TikTok?",
+        "options": [
+          "Li guardo ogni giorno in modo ossessivo, ma non so cosa fare con quei numeri. Cambio strategia ogni volta che un video va male.",
+          "Guardo soprattutto i numeri dei competitor, visualizzazioni, like, commenti, per capire cosa copiare. I miei li controllo poco.",
+          "Li analizzo nel dettaglio, ma mi perdo nei dati. Tempo di visualizzazione, retention, fonti di traffico, so cosa sono, ma non riesco a tradurli in azioni concrete che portino vendite.",
+          "Onestamente, non li capisco e ho paura che confermino quello che sospetto: che il mio profilo non interessa a nessuno."
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "id": "q_1775062994291_zxjna28wjv",
+        "type": "choice",
+        "text": "\"Non ho tempo per i social\". Qual è la verità dietro questa frase?",
+        "options": [
+          "La verità è che non ho una direzione e perdo ore a pensare cosa dovrei pubblicare, cerco idee, registro contenuti, ma nessuna richiesta.",
+          "La verità è che  perdo un sacco di tempo guardando cosa fanno gli altri, salvo contenuti ma non mi metto mai a creare nulla per me.",
+          "La verità è nel mio settore devo stare molto attento a cosa dico e questo mi porta via molto tempo, poi quando pubblico i risultati sono minimi.",
+          "La verità è che è una scusa eccellente per restare nell'ombra e non rischiare di fallire pubblicamente."
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "id": "q_1775063030963_x1rydbqye4l",
+        "type": "choice",
+        "text": "Se domani sparissero i social, cosa resterebbe del tuo business?",
+        "options": [
+          "Un grande caos, non saprei davvero come vendere il mio prodotto/servizio",
+          "Farei di tutto per trattenere i clienti che ho, anche se so che non è fattibile lavorare all'infinito con loro. ",
+          "Una grande competenza che però nessuno sa dove andare a comprare.",
+          "Non ho idea di cosa farei, spero che non succeda mai (non farmici pensare)Il silenzio in cui ho scelto di vivere finora."
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "id": "q_1775063065688_t1g2t7hpnl",
+        "type": "choice",
+        "text": "Di cosa hai veramente bisogno in questo momento per svoltare su Tik Tok?",
+        "options": [
+          "Di qualcuno che mi metta ordine nel caos e mi dia una mappa precisa da seguire per usare questo social in modo efficiente ed efficace.",
+          "Di smettere di essere l'ombra di qualcun altro e trovare finalmente la mia identità comunicativa su questo social.",
+          "Di imparare a parlare al cliente e non ai competitor, e trasformare la teoria in richieste e vendite. ",
+          "Di una struttura solida che si adatti al mio caso specifico e mi dia la sicurezza necessaria per uscire allo scoperto e iniziare."
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      {
+        "id": "q_1775063097805_r8edi00nv4l",
+        "type": "choice",
+        "text": "Quanti corsi per i social hai acquistato e mai finito o applicato?",
+        "options": [
+          "Moltissimi, li faccio, metto in pratica, ma poi l'entusiasmo svanisce perché inizio ad applicare e non vedo risultati subito, nonostante segua alla lettera.  ",
+          "Ho acquistato diversi corsi, da persone diverse, con approcci diversi. Non posso dire di aver raccolto grandi risultati. ",
+          "Pochi, non so se esistono specifici nel mio settore di riferimento, o che siano alla mia portata.",
+          "Vendo tante sponsorizzate e ci penso, ma non ho mai acquistato perché non so se poi li guarderei e non riesco mai a capire se fanno davvero al caso mio."
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "id": "q_1775063129309_w72jolcr9sk",
+        "type": "choice",
+        "text": " Cosa pensi di sapere su come funziona l'algoritmo di TikTok?",
+        "options": [
+          "Ho letto e sentito di tutto, orari migliori, hashtag, frequenza, e provo ad applicare, ma ogni settimana c'è una regola nuova che contraddice la precedente.",
+          "So che premia chi fa contenuti simili a quelli che già funzionano. Per questo replico i format dei profili che vanno forte nel mio settore.",
+          "Ho studiato come funziona, ma nonostante questo, i miei contenuti non raggiungono le persone che vorrei. Faccio visualizzazioni, ma non faccio vendite.",
+          "Quasi nulla. Mi sembra una cosa indecifrabile e fuori dal mio controllo, e questo mi crea ancora più blocco."
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "id": "q_1775063162469_g762sorgcn",
+        "type": "choice",
+        "text": "Come gestisci la pianificazione dei tuoi contenuti su TikTok?",
+        "options": [
+          "Ho provato a farmi un calendario editoriale almeno dieci volte. Dura massimo una settimana, poi salta tutto",
+          "Non pianifico davvero. Aspetto di vedere cosa pubblicano gli altri nel mio settore e poi decido cosa fare io di conseguenza. ",
+          "Ce l'ho, ed è pieno di contenuti. Il fatto è che non so bene come alternare i temi, non capisco quanti video fare a settimana, e non ho idea di come collegare quello che pubblico a un percorso che porti il mio pubblico a comprare.",
+          "Non ne ho uno. Pubblico quando mi sento pronta, cioè quasi mai. E quando lo faccio, scelgo sempre l'argomento più \"sicuro\" per evitare di espormi troppo"
+        ],
+        "optionProfileTags": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "optionScores": [
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    ],
+    "formType": "survey",
+    "scoring": {
+      "enabled": true,
+      "mode": "average",
+      "customExpr": "sum"
+    },
+    "majorityProfile": {
+      "enabled": false,
+      "messages": {},
+      "outcomes": {},
+      "tieMessage": "",
+      "tieSlideTitle": ""
+    },
+    "brevoIntegration": {
+      "enabled": true,
+      "listId": null,
+      "listName": "Typeform Test",
+      "fieldMappings": {
+        "q_1775063374346_zsu022mlx1s": {
+          "enabled": true,
+          "attributeName": "NOME"
+        },
+        "q_1775063392933_3s32u022xmy": {
+          "enabled": true,
+          "attributeName": "COGNOME"
+        },
+        "q_1775063413690_9k2y32ug88": {
+          "enabled": true,
+          "attributeName": "EMAIL"
+        }
+      },
+      "syncComputedScore": true,
+      "scoreAttributeName": "FORM_TEST_SCORE",
+      "syncMajorityWinner": true,
+      "majorityAttributeName": "FORM_PROFILE",
+      "syncQuizScore": false,
+      "quizScoreAttributeName": "QUIZ_SCORE"
+    }
+  }
+]
