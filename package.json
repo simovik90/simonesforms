@@ -4,7 +4,8 @@
   "scripts": {
     "start": "node listen.js",
     "serve": "node listen.js",
-    "serve-static": "npx serve public -p 3333"
+    "serve-static": "npx serve public -p 3333",
+    "import-supabase": "node scripts/import-to-supabase.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
