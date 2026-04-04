@@ -44,7 +44,10 @@ function isPublicApiRoute(method, p) {
   if (isPublicFormsApiRoute(method, p)) return true;
   return false;
 }
-const DATA_DIR = path.join(__dirname, 'data');
+/** In locale: cartella `data/` nel repo. Su Vercel il bundle è read-only → solo /tmp è scrivibile. */
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'typeform-data')
+  : path.join(__dirname, 'data');
 const FORMS_FILE = path.join(DATA_DIR, 'forms.json');
 const RESPONSES_FILE = path.join(DATA_DIR, 'responses.json');
 const CRM_FILE = path.join(DATA_DIR, 'crm.json');
@@ -54,7 +57,9 @@ const DEFAULT_STAGES = ['Nuovo', 'Contattato', 'Qualificato', 'Vincitore', 'Pers
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(FORMS_FILE)) fs.writeFileSync(FORMS_FILE, '[]');
 if (!fs.existsSync(RESPONSES_FILE)) fs.writeFileSync(RESPONSES_FILE, '{}');
-if (!fs.existsSync(CRM_FILE)) fs.writeFileSync(CRM_FILE, JSON.stringify({ lists: [], memberships: {}, dealPipelines: [], deals: [] }, null, 2));
+if (!fs.existsSync(CRM_FILE)) {
+  fs.writeFileSync(CRM_FILE, JSON.stringify({ lists: [], memberships: {}, dealPipelines: [], deals: [] }, null, 2));
+}
 
 app.use(express.json());
 app.use(cookieParser(getCookieSecret()));
