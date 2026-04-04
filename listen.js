@@ -1,7 +1,7 @@
 /**
- * Avvio server HTTP in locale (npm start). Su Vercel non si usa: solo api/* e process.env.
+ * Avvio server HTTP in locale (npm start). Su Vercel si usa server.js come entry (export app).
  */
-const { app } = require('./server');
+const app = require('./server');
 const PORT = process.env.PORT || 3333;
 
 app.listen(PORT, () => {

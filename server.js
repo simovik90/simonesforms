@@ -54,6 +54,9 @@ const CRM_FILE = path.join(DATA_DIR, 'crm.json');
 
 const DEFAULT_STAGES = ['Nuovo', 'Contattato', 'Qualificato', 'Vincitore', 'Perso'];
 
+/** In locale serve da qui; su Vercel i file in `public/` sono serviti dalla CDN (express.static è ignorato lì). */
+const PUBLIC_ROOT = path.join(__dirname, 'public');
+
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(FORMS_FILE)) fs.writeFileSync(FORMS_FILE, '[]');
 if (!fs.existsSync(RESPONSES_FILE)) fs.writeFileSync(RESPONSES_FILE, '{}');
@@ -952,24 +955,10 @@ app.post('/api/brevo/lists', async (req, res) => {
 
 // Link per clienti (prima di static)
 app.get('/fill/:id', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
 // File statici per ultimo: così DELETE/POST /api/* non vengono mai “mangiati” da static
-app.use(express.static(__dirname));
+app.use(express.static(PUBLIC_ROOT));
 
-function getFormsRouterDeps() {
-  return {
-    readForms,
-    writeForms,
-    readResponses,
-    writeResponses,
-    DEFAULT_STAGES,
-    genId,
-    runAutomations,
-    syncResponseToBrevo,
-    syncResponseToCrmMirrorList,
-  };
-}
-
-module.exports = { app, getFormsRouterDeps };
+module.exports = app;
