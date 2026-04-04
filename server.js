@@ -3,6 +3,14 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const createFormsRouter = require('./lib/formsRouter');
+const {
+  AUTH_COOKIE_NAME,
+  getCookieSecret,
+  isAuthenticated,
+  requireAuth,
+  isPublicFormsApiRoute,
+} = require('./lib/sessionAuth');
 const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
@@ -13,8 +21,6 @@ const PORT = process.env.PORT || 3333;
 
 const AUTH_EMAIL = String(process.env.AUTH_EMAIL || 'simone@mscommunication.it').trim().toLowerCase();
 const AUTH_PASSWORD = String(process.env.AUTH_PASSWORD || '').trim();
-const AUTH_COOKIE_SECRET = String(process.env.AUTH_COOKIE_SECRET || 'dev-cookie-secret-cambia-in-env').trim();
-const AUTH_COOKIE_NAME = 'sf_session';
 const COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 function timingSafePasswordOk(provided) {
@@ -29,22 +35,12 @@ function timingSafePasswordOk(provided) {
   }
 }
 
-function isAuthenticated(req) {
-  return req.signedCookies && req.signedCookies[AUTH_COOKIE_NAME] === '1';
-}
-
-function requireAuth(req, res, next) {
-  if (isAuthenticated(req)) return next();
-  return res.status(401).json({ error: 'Autenticazione richiesta' });
-}
-
 /** Route API accessibili senza login (compilazione pubblica + sessione). */
 function isPublicApiRoute(method, p) {
   if (p === '/api/auth/login' && method === 'POST') return true;
   if (p === '/api/auth/logout' && method === 'POST') return true;
   if (p === '/api/auth/me' && method === 'GET') return true;
-  if (method === 'GET' && /^\/api\/forms\/[^/]+$/.test(p)) return true;
-  if (method === 'POST' && /^\/api\/forms\/[^/]+\/responses$/.test(p)) return true;
+  if (isPublicFormsApiRoute(method, p)) return true;
   return false;
 }
 const DATA_DIR = path.join(__dirname, 'data');
@@ -60,7 +56,7 @@ if (!fs.existsSync(RESPONSES_FILE)) fs.writeFileSync(RESPONSES_FILE, '{}');
 if (!fs.existsSync(CRM_FILE)) fs.writeFileSync(CRM_FILE, JSON.stringify({ lists: [], memberships: {}, dealPipelines: [], deals: [] }, null, 2));
 
 app.use(express.json());
-app.use(cookieParser(AUTH_COOKIE_SECRET));
+app.use(cookieParser(getCookieSecret()));
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api')) return next();
@@ -618,124 +614,21 @@ function runAutomations(form, responseId, response, responses) {
   return updated;
 }
 
-// API
-app.get('/api/forms', (req, res) => {
-  res.json(readForms());
-});
-
-app.get('/api/forms/:id', (req, res) => {
-  const forms = readForms();
-  const form = forms.find((f) => f.id === req.params.id);
-  if (!form) return res.status(404).json({ error: 'Form non trovato' });
-  res.json(form);
-});
-
-app.post('/api/forms', (req, res) => {
-  const form = req.body;
-  if (!form.id || !form.title) return res.status(400).json({ error: 'id e title richiesti' });
-  const forms = readForms();
-  const idx = forms.findIndex((f) => f.id === form.id);
-  if (idx >= 0) forms[idx] = form;
-  else forms.push(form);
-  writeForms(forms);
-  res.json(form);
-});
-
-app.delete('/api/forms/:id', (req, res) => {
-  const formId = req.params.id;
-  const forms = readForms().filter((f) => f.id !== formId);
-  writeForms(forms);
-  const responses = readResponses();
-  delete responses[formId];
-  writeResponses(responses);
-  res.status(204).send();
-});
-
-app.get('/api/forms/:id/responses', (req, res) => {
-  const responses = readResponses();
-  let list = responses[req.params.id] || [];
-  const forms = readForms();
-  const form = forms.find((f) => f.id === req.params.id);
-  const stages = form?.pipelineStages || DEFAULT_STAGES;
-  let changed = false;
-  list = list.map((r) => {
-    if (r.id && r.stage != null) return r;
-    changed = true;
-    return { ...r, id: r.id || genId(), stage: r.stage || stages[0] || 'Nuovo' };
-  });
-  if (changed) {
-    responses[req.params.id] = list;
-    writeResponses(responses);
-  }
-  res.json(list);
-});
-
-app.post('/api/forms/:id/responses', async (req, res) => {
-  const { answers, quizScore, computedScore, majorityResult } = req.body || {};
-  const formId = req.params.id;
-  const forms = readForms();
-  const form = forms.find((f) => f.id === formId);
-  const stages = form?.pipelineStages || DEFAULT_STAGES;
-  const defaultStage = stages[0] || 'Nuovo';
-
-  const responses = readResponses();
-  if (!responses[formId]) responses[formId] = [];
-
-  const id = genId();
-  let response = {
-    id,
-    date: new Date().toISOString(),
-    answers: answers || {},
-    quizScore: quizScore ?? null,
-    computedScore: computedScore ?? null,
-    majorityResult: majorityResult ?? null,
-    stage: defaultStage,
-  };
-
-  response = runAutomations(form || { automations: [] }, id, response, responses[formId]);
-  responses[formId].push(response);
-  writeResponses(responses);
-
-  try {
-    if (form) await syncResponseToBrevo(form, response);
-  } catch (e) {
-    console.error('[Brevo] sync error', e);
-  }
-  try {
-    if (form) syncResponseToCrmMirrorList(form, response);
-  } catch (e) {
-    console.error('[CRM] mirror list sync error', e);
-  }
-
-  res.status(201).json({ ok: true, responseId: id });
-});
-
-app.patch('/api/forms/:formId/responses/:responseId', (req, res) => {
-  const { formId, responseId } = req.params;
-  const { stage } = req.body || {};
-  const responses = readResponses();
-  const list = responses[formId];
-  if (!list) return res.status(404).json({ error: 'Nessuna risposta' });
-  const idx = list.findIndex((r) => r.id === responseId);
-  if (idx < 0) return res.status(404).json({ error: 'Risposta non trovata' });
-  if (stage) list[idx].stage = stage;
-  writeResponses(responses);
-  res.json(list[idx]);
-});
-
-app.delete('/api/forms/:formId/responses/:responseId', (req, res) => {
-  const { formId, responseId } = req.params;
-  const responses = readResponses();
-  const list = responses[formId];
-  if (!list) return res.status(404).json({ error: 'Nessuna risposta' });
-  const idx = list.findIndex((r) => r.id === responseId);
-  if (idx < 0) return res.status(404).json({ error: 'Risposta non trovata' });
-  list.splice(idx, 1);
-  if (list.length === 0) delete responses[formId];
-  else responses[formId] = list;
-  writeResponses(responses);
-  res.status(204).send();
-});
+// API — /api/forms anche su Vercel: api/form.js (+ vercel.json rewrite)
+app.use(
+  '/api/forms',
+  createFormsRouter(express, {
+    readForms,
+    writeForms,
+    readResponses,
+    writeResponses,
+    DEFAULT_STAGES,
+    genId,
+    runAutomations,
+    syncResponseToBrevo,
+    syncResponseToCrmMirrorList,
+  })
+);
 
 app.get('/api/crm/lists', (req, res) => {
   const crm = readCrm();
@@ -1059,10 +952,28 @@ app.get('/fill/:id', (req, res) => {
 // File statici per ultimo: così DELETE/POST /api/* non vengono mai “mangiati” da static
 app.use(express.static(__dirname));
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('  MyTypeform in ascolto su http://localhost:' + PORT);
-  console.log('  Link clienti: http://localhost:' + PORT + '/fill/FORM_ID');
-  console.log('  Pipeline e automazioni attive.');
-  console.log('');
-});
+function getFormsRouterDeps() {
+  return {
+    readForms,
+    writeForms,
+    readResponses,
+    writeResponses,
+    DEFAULT_STAGES,
+    genId,
+    runAutomations,
+    syncResponseToBrevo,
+    syncResponseToCrmMirrorList,
+  };
+}
+
+module.exports = { getFormsRouterDeps };
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('  MyTypeform in ascolto su http://localhost:' + PORT);
+    console.log('  Link clienti: http://localhost:' + PORT + '/fill/FORM_ID');
+    console.log('  Pipeline e automazioni attive.');
+    console.log('');
+  });
+}
