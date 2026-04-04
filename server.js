@@ -13,8 +13,8 @@ const {
   requireAuth,
   isPublicFormsApiRoute,
 } = require('./lib/sessionAuth');
+const dataStore = require('./lib/dataStore');
 const crypto = require('crypto');
-const fs = require('fs');
 const https = require('https');
 const http = require('http');
 
@@ -44,28 +44,23 @@ function isPublicApiRoute(method, p) {
   if (isPublicFormsApiRoute(method, p)) return true;
   return false;
 }
-/** In locale: cartella `data/` nel repo. Su Vercel il bundle è read-only → solo /tmp è scrivibile. */
-const DATA_DIR = process.env.VERCEL
-  ? path.join('/tmp', 'typeform-data')
-  : path.join(__dirname, 'data');
-const FORMS_FILE = path.join(DATA_DIR, 'forms.json');
-const RESPONSES_FILE = path.join(DATA_DIR, 'responses.json');
-const CRM_FILE = path.join(DATA_DIR, 'crm.json');
-
 const DEFAULT_STAGES = ['Nuovo', 'Contattato', 'Qualificato', 'Vincitore', 'Perso'];
 
 /** In locale serve da qui; su Vercel i file in `public/` sono serviti dalla CDN (express.static è ignorato lì). */
 const PUBLIC_ROOT = path.join(__dirname, 'public');
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(FORMS_FILE)) fs.writeFileSync(FORMS_FILE, '[]');
-if (!fs.existsSync(RESPONSES_FILE)) fs.writeFileSync(RESPONSES_FILE, '{}');
-if (!fs.existsSync(CRM_FILE)) {
-  fs.writeFileSync(CRM_FILE, JSON.stringify({ lists: [], memberships: {}, dealPipelines: [], deals: [] }, null, 2));
-}
-
 app.use(express.json());
 app.use(cookieParser(getCookieSecret()));
+
+app.use('/api', async (req, res, next) => {
+  try {
+    await dataStore.ensureLoaded();
+    next();
+  } catch (err) {
+    console.error('[dataStore] ensureLoaded', err);
+    res.status(503).json({ error: 'Storage non disponibile. Verifica Supabase e la tabella app_data.' });
+  }
+});
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api')) return next();
@@ -104,45 +99,22 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 function readForms() {
-  try {
-    return JSON.parse(fs.readFileSync(FORMS_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
+  return dataStore.readForms();
 }
-
-function writeForms(forms) {
-  fs.writeFileSync(FORMS_FILE, JSON.stringify(forms, null, 2));
-}
-
 function readResponses() {
-  try {
-    return JSON.parse(fs.readFileSync(RESPONSES_FILE, 'utf8'));
-  } catch {
-    return {};
-  }
+  return dataStore.readResponses();
 }
-
-function writeResponses(responses) {
-  fs.writeFileSync(RESPONSES_FILE, JSON.stringify(responses, null, 2));
-}
-
 function readCrm() {
-  try {
-    const data = JSON.parse(fs.readFileSync(CRM_FILE, 'utf8'));
-    return {
-      lists: Array.isArray(data?.lists) ? data.lists : [],
-      memberships: data?.memberships && typeof data.memberships === 'object' ? data.memberships : {},
-      dealPipelines: Array.isArray(data?.dealPipelines) ? data.dealPipelines : [],
-      deals: Array.isArray(data?.deals) ? data.deals : [],
-    };
-  } catch {
-    return { lists: [], memberships: {}, dealPipelines: [], deals: [] };
-  }
+  return dataStore.readCrm();
 }
-
-function writeCrm(crm) {
-  fs.writeFileSync(CRM_FILE, JSON.stringify(crm, null, 2));
+async function writeForms(forms) {
+  return dataStore.writeForms(forms);
+}
+async function writeResponses(responses) {
+  return dataStore.writeResponses(responses);
+}
+async function writeCrm(crm) {
+  return dataStore.writeCrm(crm);
 }
 
 function brevoNormAttr(name) {
@@ -283,7 +255,7 @@ function findCrmListByName(displayName) {
   return crm.lists.find((l) => normalizeListNameForMatch(l.name) === n) || null;
 }
 
-function ensureCrmListByName(displayName) {
+async function ensureCrmListByName(displayName) {
   const trimmed = String(displayName || '').trim();
   if (!trimmed) throw new Error('Nome lista richiesto');
   const existing = findCrmListByName(trimmed);
@@ -291,7 +263,7 @@ function ensureCrmListByName(displayName) {
   const crm = readCrm();
   const crmList = { id: genListId(), name: trimmed, createdAt: new Date().toISOString() };
   crm.lists.push(crmList);
-  writeCrm(crm);
+  await writeCrm(crm);
   return { id: crmList.id, name: crmList.name, created: true };
 }
 
@@ -328,7 +300,7 @@ async function ensureBrevoListByName(displayName, explicitFolderId) {
 async function ensureBrevoAndCrmLists(displayName, options = {}) {
   const trimmed = String(displayName || '').trim();
   if (!trimmed) throw new Error('Nome lista richiesto');
-  const crm = ensureCrmListByName(trimmed);
+  const crm = await ensureCrmListByName(trimmed);
   if (!process.env.BREVO_API_KEY || !String(process.env.BREVO_API_KEY).trim()) {
     throw new Error('Brevo non configurato: imposta BREVO_API_KEY sul server');
   }
@@ -410,7 +382,7 @@ async function syncResponseToBrevo(form, response) {
 }
 
 /** Iscrive il contatto alla lista CRM locale gemella (stesso criterio email di Brevo). */
-function syncResponseToCrmMirrorList(form, response) {
+async function syncResponseToCrmMirrorList(form, response) {
   const bi = form?.brevoIntegration;
   if (!bi?.enabled || !bi.crmListId) return;
   const parsed = extractContactFromResponse(form, response);
@@ -424,7 +396,7 @@ function syncResponseToCrmMirrorList(form, response) {
   const key = parsed.contactKey;
   if (!Array.isArray(crm.memberships[key])) crm.memberships[key] = [];
   if (!crm.memberships[key].includes(bi.crmListId)) crm.memberships[key].push(bi.crmListId);
-  writeCrm(crm);
+  await writeCrm(crm);
 }
 
 function genId() {
@@ -644,28 +616,28 @@ app.get('/api/crm/lists', (req, res) => {
   res.json(crm.lists);
 });
 
-app.post('/api/crm/lists', (req, res) => {
+app.post('/api/crm/lists', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome lista richiesto' });
   const crm = readCrm();
   const list = { id: genListId(), name, createdAt: new Date().toISOString() };
   crm.lists.push(list);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(201).json(list);
 });
 
-app.patch('/api/crm/lists/:id', (req, res) => {
+app.patch('/api/crm/lists/:id', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome lista richiesto' });
   const crm = readCrm();
   const idx = crm.lists.findIndex((l) => l.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'Lista non trovata' });
   crm.lists[idx].name = name;
-  writeCrm(crm);
+  await writeCrm(crm);
   res.json(crm.lists[idx]);
 });
 
-app.delete('/api/crm/lists/:id', (req, res) => {
+app.delete('/api/crm/lists/:id', async (req, res) => {
   const crm = readCrm();
   crm.lists = crm.lists.filter((l) => l.id !== req.params.id);
   Object.keys(crm.memberships || {}).forEach((contactKey) => {
@@ -673,11 +645,11 @@ app.delete('/api/crm/lists/:id', (req, res) => {
     if (next.length === 0) delete crm.memberships[contactKey];
     else crm.memberships[contactKey] = next;
   });
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(204).send();
 });
 
-app.post('/api/crm/lists/:id/contacts', (req, res) => {
+app.post('/api/crm/lists/:id/contacts', async (req, res) => {
   const listId = req.params.id;
   const contactKey = String(req.body?.contactKey || '');
   if (!contactKey) return res.status(400).json({ error: 'contactKey richiesto' });
@@ -685,11 +657,11 @@ app.post('/api/crm/lists/:id/contacts', (req, res) => {
   if (!crm.lists.some((l) => l.id === listId)) return res.status(404).json({ error: 'Lista non trovata' });
   if (!Array.isArray(crm.memberships[contactKey])) crm.memberships[contactKey] = [];
   if (!crm.memberships[contactKey].includes(listId)) crm.memberships[contactKey].push(listId);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(201).json({ ok: true });
 });
 
-app.delete('/api/crm/lists/:id/contacts/:contactKey', (req, res) => {
+app.delete('/api/crm/lists/:id/contacts/:contactKey', async (req, res) => {
   const listId = req.params.id;
   const contactKey = decodeURIComponent(req.params.contactKey);
   const crm = readCrm();
@@ -697,7 +669,7 @@ app.delete('/api/crm/lists/:id/contacts/:contactKey', (req, res) => {
   const next = current.filter((id) => id !== listId);
   if (next.length === 0) delete crm.memberships[contactKey];
   else crm.memberships[contactKey] = next;
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(204).send();
 });
 
@@ -709,7 +681,7 @@ app.get('/api/crm/contacts', (req, res) => {
 });
 
 /** Rimuove tutte le compilazioni che aggregano questo contatto, le iscrizioni alle liste e i deal collegati. */
-app.delete('/api/crm/contacts/:contactKey', (req, res) => {
+app.delete('/api/crm/contacts/:contactKey', async (req, res) => {
   const contactKey = decodeURIComponent(req.params.contactKey);
   if (!contactKey) return res.status(400).json({ error: 'contactKey richiesto' });
   const forms = readForms();
@@ -729,8 +701,8 @@ app.delete('/api/crm/contacts/:contactKey', (req, res) => {
   const crm = readCrm();
   delete crm.memberships[contactKey];
   crm.deals = (crm.deals || []).filter((d) => d.contactKey !== contactKey);
-  writeCrm(crm);
-  writeResponses(responses);
+  await writeCrm(crm);
+  await writeResponses(responses);
   res.json({ ok: true, removedResponses: removed });
 });
 
@@ -739,7 +711,7 @@ app.get('/api/deals/pipelines', (req, res) => {
   res.json(crm.dealPipelines || []);
 });
 
-app.post('/api/deals/pipelines', (req, res) => {
+app.post('/api/deals/pipelines', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome pipeline richiesto' });
   const crm = readCrm();
@@ -756,30 +728,30 @@ app.post('/api/deals/pipelines', (req, res) => {
     ],
   };
   crm.dealPipelines.push(pipeline);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(201).json(pipeline);
 });
 
-app.patch('/api/deals/pipelines/:id', (req, res) => {
+app.patch('/api/deals/pipelines/:id', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome pipeline richiesto' });
   const crm = readCrm();
   const idx = crm.dealPipelines.findIndex((p) => p.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'Pipeline non trovata' });
   crm.dealPipelines[idx].name = name;
-  writeCrm(crm);
+  await writeCrm(crm);
   res.json(crm.dealPipelines[idx]);
 });
 
-app.delete('/api/deals/pipelines/:id', (req, res) => {
+app.delete('/api/deals/pipelines/:id', async (req, res) => {
   const crm = readCrm();
   crm.dealPipelines = crm.dealPipelines.filter((p) => p.id !== req.params.id);
   crm.deals = (crm.deals || []).filter((d) => d.pipelineId !== req.params.id);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(204).send();
 });
 
-app.post('/api/deals/pipelines/:id/stages', (req, res) => {
+app.post('/api/deals/pipelines/:id/stages', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome stage richiesto' });
   const crm = readCrm();
@@ -787,11 +759,11 @@ app.post('/api/deals/pipelines/:id/stages', (req, res) => {
   if (idx < 0) return res.status(404).json({ error: 'Pipeline non trovata' });
   const stage = { id: genStageId(), name };
   crm.dealPipelines[idx].stages = [...(crm.dealPipelines[idx].stages || []), stage];
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(201).json(stage);
 });
 
-app.patch('/api/deals/pipelines/:id/stages/:stageId', (req, res) => {
+app.patch('/api/deals/pipelines/:id/stages/:stageId', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome stage richiesto' });
   const crm = readCrm();
@@ -800,11 +772,11 @@ app.patch('/api/deals/pipelines/:id/stages/:stageId', (req, res) => {
   const sIdx = (crm.dealPipelines[pIdx].stages || []).findIndex((s) => s.id === req.params.stageId);
   if (sIdx < 0) return res.status(404).json({ error: 'Stage non trovato' });
   crm.dealPipelines[pIdx].stages[sIdx].name = name;
-  writeCrm(crm);
+  await writeCrm(crm);
   res.json(crm.dealPipelines[pIdx].stages[sIdx]);
 });
 
-app.delete('/api/deals/pipelines/:id/stages/:stageId', (req, res) => {
+app.delete('/api/deals/pipelines/:id/stages/:stageId', async (req, res) => {
   const crm = readCrm();
   const pIdx = crm.dealPipelines.findIndex((p) => p.id === req.params.id);
   if (pIdx < 0) return res.status(404).json({ error: 'Pipeline non trovata' });
@@ -819,7 +791,7 @@ app.delete('/api/deals/pipelines/:id/stages/:stageId', (req, res) => {
     if (d.pipelineId === req.params.id && d.stageId === req.params.stageId) return { ...d, stageId: fallbackStageId, updatedAt: new Date().toISOString() };
     return d;
   });
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(204).send();
 });
 
@@ -830,7 +802,7 @@ app.get('/api/deals', (req, res) => {
   res.json(deals);
 });
 
-app.post('/api/deals', (req, res) => {
+app.post('/api/deals', async (req, res) => {
   const pipelineId = String(req.body?.pipelineId || '');
   const stageId = String(req.body?.stageId || '');
   const contactKey = String(req.body?.contactKey || '');
@@ -854,11 +826,11 @@ app.post('/api/deals', (req, res) => {
     updatedAt: now,
   };
   crm.deals.push(deal);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(201).json(deal);
 });
 
-app.patch('/api/deals/:id', (req, res) => {
+app.patch('/api/deals/:id', async (req, res) => {
   const crm = readCrm();
   const idx = (crm.deals || []).findIndex((d) => d.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'Deal non trovato' });
@@ -876,14 +848,14 @@ app.patch('/api/deals/:id', (req, res) => {
   if (!pipeline) return res.status(400).json({ error: 'Pipeline non valida' });
   if (!(pipeline.stages || []).some((s) => s.id === next.stageId)) return res.status(400).json({ error: 'Stage non valido' });
   crm.deals[idx] = next;
-  writeCrm(crm);
+  await writeCrm(crm);
   res.json(next);
 });
 
-app.delete('/api/deals/:id', (req, res) => {
+app.delete('/api/deals/:id', async (req, res) => {
   const crm = readCrm();
   crm.deals = (crm.deals || []).filter((d) => d.id !== req.params.id);
-  writeCrm(crm);
+  await writeCrm(crm);
   res.status(204).send();
 });
 
