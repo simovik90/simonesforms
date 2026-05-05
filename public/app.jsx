@@ -50,6 +50,14 @@ const DEFAULT_MAJORITY_PROFILE = {
   showResultOnThankYou: false,
 };
 
+const DEFAULT_THANK_YOU_PAGE = {
+  title: 'Grazie!',
+  message: 'Le tue risposte sono state salvate.',
+  ctaLabel: '',
+  ctaUrl: '',
+  ctaNewTab: true,
+};
+
 const DEFAULT_FORM_BREVO_INTEGRATION = {
   enabled: false,
   listId: null,
@@ -239,6 +247,19 @@ function normalizeMajorityProfileForLoad(mp) {
     tieSlideTitle: mp.tieSlideTitle || '',
     showOutcomeSlide: mp.showOutcomeSlide !== false,
     showResultOnThankYou: Boolean(mp.showResultOnThankYou),
+  };
+}
+
+function normalizeThankYouPageForLoad(raw) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_THANK_YOU_PAGE };
+  return {
+    ...DEFAULT_THANK_YOU_PAGE,
+    ...raw,
+    title: String(raw.title != null ? raw.title : DEFAULT_THANK_YOU_PAGE.title),
+    message: String(raw.message != null ? raw.message : DEFAULT_THANK_YOU_PAGE.message),
+    ctaLabel: String(raw.ctaLabel != null ? raw.ctaLabel : ''),
+    ctaUrl: String(raw.ctaUrl != null ? raw.ctaUrl : ''),
+    ctaNewTab: raw.ctaNewTab !== false,
   };
 }
 
@@ -1103,7 +1124,7 @@ function Dashboard({ forms, useApi, onRefresh, onEdit, onFill, onResults, onDele
 
   const handleNewForm = (formType = 'contact') => {
     const id = 'f_' + Date.now();
-    const newForm = { id, title: 'Nuovo form', questions: [], formType };
+    const newForm = { id, title: 'Nuovo form', questions: [], formType, thankYouPage: { ...DEFAULT_THANK_YOU_PAGE } };
     if (useApi) {
       fetch('/api/forms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newForm) })
         .then(() => { onRefresh(); onEdit(id); });
@@ -1654,6 +1675,8 @@ function QuestionnaireSettingsModal({
   onScoringChange,
   majorityProfile,
   onMajorityChange,
+  thankYouPage,
+  onThankYouPageChange,
   brevoIntegration,
   onBrevoChange,
   useApi,
@@ -1686,6 +1709,54 @@ function QuestionnaireSettingsModal({
             />
           </section>
           <section className="builder-settings-modal-section">
+            <h3 className="builder-settings-section-title">Thank-you page</h3>
+            <div className="builder-props">
+              <p className="builder-props-help" style={{ marginTop: 0 }}>
+                Configura la schermata mostrata dopo la compilazione del quiz.
+              </p>
+              <label className="builder-props-label">Titolo</label>
+              <input
+                type="text"
+                className="builder-props-input"
+                value={thankYouPage.title || ''}
+                onChange={(e) => onThankYouPageChange({ ...thankYouPage, title: e.target.value })}
+                placeholder="Grazie!"
+              />
+              <label className="builder-props-label">Messaggio</label>
+              <textarea
+                className="builder-props-textarea"
+                rows={4}
+                value={thankYouPage.message || ''}
+                onChange={(e) => onThankYouPageChange({ ...thankYouPage, message: e.target.value })}
+                placeholder="Le tue risposte sono state salvate."
+              />
+              <label className="builder-props-label">Testo bottone (opzionale)</label>
+              <input
+                type="text"
+                className="builder-props-input"
+                value={thankYouPage.ctaLabel || ''}
+                onChange={(e) => onThankYouPageChange({ ...thankYouPage, ctaLabel: e.target.value })}
+                placeholder="Es. Vai al sito"
+              />
+              <label className="builder-props-label">Link bottone (opzionale)</label>
+              <input
+                type="url"
+                className="builder-props-input"
+                value={thankYouPage.ctaUrl || ''}
+                onChange={(e) => onThankYouPageChange({ ...thankYouPage, ctaUrl: e.target.value })}
+                placeholder="https://..."
+              />
+              <label className="builder-props-checkbox">
+                <input
+                  type="checkbox"
+                  checked={Boolean(thankYouPage.ctaNewTab)}
+                  onChange={(e) => onThankYouPageChange({ ...thankYouPage, ctaNewTab: e.target.checked })}
+                />
+                Apri il link in una nuova scheda
+              </label>
+            </div>
+          </section>
+          <section className="builder-settings-modal-section">
             <FormBrevoPanel questions={questions} brevoIntegration={brevoIntegration} onChange={onBrevoChange} useApi={useApi} />
           </section>
         </div>
@@ -1709,6 +1780,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
   const [formType, setFormType] = React.useState(existing?.formType || 'contact');
   const [scoring, setScoring] = React.useState(() => (existing?.scoring && typeof existing.scoring === 'object' ? { ...DEFAULT_FORM_SCORING, ...existing.scoring } : { ...DEFAULT_FORM_SCORING }));
   const [majorityProfile, setMajorityProfile] = React.useState(() => normalizeMajorityProfileForLoad(existing?.majorityProfile));
+  const [thankYouPage, setThankYouPage] = React.useState(() => normalizeThankYouPageForLoad(existing?.thankYouPage));
   const [brevoIntegration, setBrevoIntegration] = React.useState(() => normalizeBrevoIntegrationForLoad(existing?.brevoIntegration));
   const [selectedId, setSelectedId] = React.useState(null);
   const [addModalOpen, setAddModalOpen] = React.useState(false);
@@ -1771,6 +1843,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       setFormType(existing.formType || 'contact');
       setScoring(existing.scoring && typeof existing.scoring === 'object' ? { ...DEFAULT_FORM_SCORING, ...existing.scoring } : { ...DEFAULT_FORM_SCORING });
       setMajorityProfile(normalizeMajorityProfileForLoad(existing.majorityProfile));
+      setThankYouPage(normalizeThankYouPageForLoad(existing.thankYouPage));
       setBrevoIntegration(normalizeBrevoIntegrationForLoad(existing.brevoIntegration));
       setSelectedId((prev) => (existing.questions?.some((q) => q.id === prev) ? prev : existing.questions?.[0]?.id || null));
     } else {
@@ -1779,6 +1852,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       setFormType('contact');
       setScoring({ ...DEFAULT_FORM_SCORING });
       setMajorityProfile(normalizeMajorityProfileForLoad(null));
+      setThankYouPage(normalizeThankYouPageForLoad(null));
       setBrevoIntegration(normalizeBrevoIntegrationForLoad(null));
       setSelectedId(null);
     }
@@ -1866,6 +1940,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       formType: formType || 'contact',
       scoring,
       majorityProfile,
+      thankYouPage,
       brevoIntegration,
     };
     setSaving(true);
@@ -2019,6 +2094,8 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
         onScoringChange={setScoring}
         majorityProfile={majorityProfile}
         onMajorityChange={setMajorityProfile}
+        thankYouPage={thankYouPage}
+        onThankYouPageChange={setThankYouPage}
         brevoIntegration={brevoIntegration}
         onBrevoChange={setBrevoIntegration}
         useApi={useApi}
@@ -2038,6 +2115,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
               formType: formType || 'contact',
               scoring,
               majorityProfile,
+              thankYouPage,
               brevoIntegration,
             }}
             onClose={() => setPreviewOpen(false)}
@@ -2763,6 +2841,11 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const currentIndex = current ? questions.findIndex((q) => q.id === current.id) : -1;
   const showThankYou = step === -1;
   const showOutcomeSlide = step === -2;
+  const thankYouPage = normalizeThankYouPageForLoad(form?.thankYouPage);
+  const thankYouTitle = (thankYouPage.title || '').trim();
+  const thankYouMessage = (thankYouPage.message || '').trim();
+  const thankYouCtaLabel = (thankYouPage.ctaLabel || '').trim();
+  const thankYouCtaUrl = (thankYouPage.ctaUrl || '').trim();
   const outcomeSlideContent = submittedMajorityResult != null ? getMajorityOutcomeSlideContent(form, submittedMajorityResult) : null;
   const thankYouMajorityContent =
     Boolean(form?.majorityProfile?.showResultOnThankYou) && submittedMajorityResult != null
@@ -2866,13 +2949,13 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
         <div className="thank-you-screen">
           {previewMode ? (
             <>
-              <h2>Fine anteprima</h2>
+              <h2>{thankYouTitle || 'Fine anteprima'}</h2>
               <p className="thank-you-preview-note">Le risposte non sono state salvate: è solo un’anteprima del questionario.</p>
             </>
           ) : (
             <>
-              <h2>Grazie!</h2>
-              <p>Le tue risposte sono state salvate.</p>
+              <h2>{thankYouTitle || 'Grazie!'}</h2>
+              <p>{thankYouMessage || 'Le tue risposte sono state salvate.'}</p>
             </>
           )}
           {submittedScore != null && (
@@ -2896,6 +2979,16 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
                 <p className="thank-you-preview-note">Anteprima: le risposte non sono salvate.</p>
               )}
             </div>
+          )}
+          {!previewMode && thankYouCtaLabel && thankYouCtaUrl && (
+            <a
+              className="btn-secondary thank-you-cta"
+              href={thankYouCtaUrl}
+              target={thankYouPage.ctaNewTab ? '_blank' : undefined}
+              rel={thankYouPage.ctaNewTab ? 'noopener noreferrer' : undefined}
+            >
+              {thankYouCtaLabel}
+            </a>
           )}
           <button className="btn-primary" onClick={onSubmit}>{previewMode ? 'Chiudi anteprima' : 'Chiudi'}</button>
         </div>
