@@ -268,6 +268,31 @@ function normalizeThankYouPageForLoad(raw) {
 function fireSlidePixel(url) {
   const raw = String(url || '').trim();
   if (!raw) return false;
+  const parseMetaFromSnippet = (input) => {
+    const metaUrlMatch = input.match(/https?:\/\/www\.facebook\.com\/tr\?[^"'\s<>]+/i);
+    if (metaUrlMatch) {
+      try {
+        const u = new URL(metaUrlMatch[0]);
+        const id = u.searchParams.get('id');
+        const ev = u.searchParams.get('ev') || 'PageView';
+        if (id) return { id, event: ev };
+      } catch {}
+    }
+    const initMatch = input.match(/fbq\(\s*['"]init['"]\s*,\s*['"](\d+)['"]\s*\)/i);
+    if (initMatch && initMatch[1]) {
+      const trackMatch = input.match(/fbq\(\s*['"]track(?:Custom)?['"]\s*,\s*['"]([^'"]+)['"]\s*\)/i);
+      return { id: initMatch[1], event: trackMatch?.[1] || 'PageView' };
+    }
+    return null;
+  };
+  const meta = parseMetaFromSnippet(raw);
+  if (meta) {
+    const beaconUrl = `https://www.facebook.com/tr?id=${encodeURIComponent(meta.id)}&ev=${encodeURIComponent(meta.event)}&noscript=1`;
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer-when-downgrade';
+    img.src = beaconUrl;
+    return true;
+  }
   try {
     const parsed = new URL(raw, window.location.origin);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
