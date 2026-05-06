@@ -53,6 +53,7 @@ const DEFAULT_MAJORITY_PROFILE = {
 const DEFAULT_THANK_YOU_PAGE = {
   title: 'Grazie!',
   message: 'Le tue risposte sono state salvate.',
+  showResultSlide: true,
   ctaLabel: '',
   ctaUrl: '',
   ctaNewTab: true,
@@ -257,6 +258,7 @@ function normalizeThankYouPageForLoad(raw) {
     ...raw,
     title: String(raw.title != null ? raw.title : DEFAULT_THANK_YOU_PAGE.title),
     message: String(raw.message != null ? raw.message : DEFAULT_THANK_YOU_PAGE.message),
+    showResultSlide: raw.showResultSlide !== false,
     ctaLabel: String(raw.ctaLabel != null ? raw.ctaLabel : ''),
     ctaUrl: String(raw.ctaUrl != null ? raw.ctaUrl : ''),
     ctaNewTab: raw.ctaNewTab !== false,
@@ -1730,6 +1732,14 @@ function QuestionnaireSettingsModal({
                 onChange={(e) => onThankYouPageChange({ ...thankYouPage, message: e.target.value })}
                 placeholder="Le tue risposte sono state salvate."
               />
+              <label className="builder-props-checkbox">
+                <input
+                  type="checkbox"
+                  checked={thankYouPage.showResultSlide !== false}
+                  onChange={(e) => onThankYouPageChange({ ...thankYouPage, showResultSlide: e.target.checked })}
+                />
+                Mostra la slide risultato finale prima della thank-you page
+              </label>
               <label className="builder-props-label">Testo bottone (opzionale)</label>
               <input
                 type="text"
@@ -2838,6 +2848,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const currentGroup = step >= 0 && step < groups.length ? groups[step] : null;
   const currentQuestions = currentGroup ? currentGroup.map((idx) => questions[idx]).filter(Boolean) : [];
   const current = currentQuestions[currentQuestions.length - 1] || null;
+  const hasVideoInCurrentSlide = currentQuestions.some((q) => parseStatementVideoUrl(getQuestionVideoUrl(q)));
   const currentIndex = current ? questions.findIndex((q) => q.id === current.id) : -1;
   const showThankYou = step === -1;
   const showOutcomeSlide = step === -2;
@@ -2910,7 +2921,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
       setSubmittedScore(quizScore);
       const slideContent = getMajorityOutcomeSlideContent(form, majorityResult);
       const mp = form.majorityProfile || {};
-      const showOutcome = mp.showOutcomeSlide !== false && slideContent != null;
+      const showOutcome = thankYouPage.showResultSlide !== false && mp.showOutcomeSlide !== false && slideContent != null;
       setStep(showOutcome ? -2 : -1);
       return;
     }
@@ -3005,7 +3016,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
           </div>
         </div>
       ) : current ? (
-        <div className="typeform-screen">
+        <div className={'typeform-screen' + (hasVideoInCurrentSlide ? ' typeform-screen--scrollable' : '')}>
           {currentQuestions.length > 1 ? (
             <div className="typeform-slide-multi-card">
               <div className="typeform-slide-multi-grid">
