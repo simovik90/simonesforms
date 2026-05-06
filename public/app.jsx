@@ -61,6 +61,12 @@ const DEFAULT_THANK_YOU_PAGE = {
   pixelFireOnce: true,
 };
 
+const DEFAULT_FORM_TRACKING = {
+  globalSnippet: '',
+  firstSlideScript: '',
+  statementButtonScript: '',
+};
+
 const DEFAULT_FORM_BREVO_INTEGRATION = {
   enabled: false,
   listId: null,
@@ -269,6 +275,17 @@ function normalizeThankYouPageForLoad(raw) {
   };
 }
 
+function normalizeTrackingForLoad(raw) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_FORM_TRACKING };
+  return {
+    ...DEFAULT_FORM_TRACKING,
+    ...raw,
+    globalSnippet: String(raw.globalSnippet != null ? raw.globalSnippet : ''),
+    firstSlideScript: String(raw.firstSlideScript != null ? raw.firstSlideScript : ''),
+    statementButtonScript: String(raw.statementButtonScript != null ? raw.statementButtonScript : ''),
+  };
+}
+
 function fireSlidePixel(url) {
   const raw = String(url || '').trim();
   if (!raw) return false;
@@ -303,6 +320,23 @@ function fireSlidePixel(url) {
     const img = new Image();
     img.referrerPolicy = 'no-referrer-when-downgrade';
     img.src = parsed.toString();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runScriptSnippet(rawSnippet) {
+  const code = String(rawSnippet || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[^>]*>/gi, '')
+    .replace(/<\/script>/gi, '')
+    .trim();
+  if (!code) return false;
+  try {
+    // Esegue lo snippet nel contesto pagina (uso intenzionale: tracking custom).
+    const fn = new Function(code);
+    fn();
     return true;
   } catch {
     return false;
@@ -1736,6 +1770,8 @@ function QuestionnaireSettingsModal({
   onMajorityChange,
   thankYouPage,
   onThankYouPageChange,
+  trackingScripts,
+  onTrackingScriptsChange,
   brevoIntegration,
   onBrevoChange,
   useApi,
@@ -1845,6 +1881,38 @@ function QuestionnaireSettingsModal({
             </div>
           </section>
           <section className="builder-settings-modal-section">
+            <h3 className="builder-settings-section-title">Tracking script globali</h3>
+            <div className="builder-props">
+              <p className="builder-props-help" style={{ marginTop: 0 }}>
+                Questi script partono durante la compilazione reale (non in anteprima builder).
+              </p>
+              <label className="builder-props-label">Snippet globale (es. init pixel)</label>
+              <textarea
+                className="builder-props-textarea"
+                rows={6}
+                value={trackingScripts.globalSnippet || ''}
+                onChange={(e) => onTrackingScriptsChange({ ...trackingScripts, globalSnippet: e.target.value })}
+                placeholder={"<script>...\nfbq('init', 'PIXEL_ID');\n</script>"}
+              />
+              <label className="builder-props-label">Script caricamento prima slide (es. PageView)</label>
+              <textarea
+                className="builder-props-textarea"
+                rows={4}
+                value={trackingScripts.firstSlideScript || ''}
+                onChange={(e) => onTrackingScriptsChange({ ...trackingScripts, firstSlideScript: e.target.value })}
+                placeholder={"<script>fbq('track', 'PageView');</script>"}
+              />
+              <label className="builder-props-label">Script click bottone su slide testo/descrizione</label>
+              <textarea
+                className="builder-props-textarea"
+                rows={4}
+                value={trackingScripts.statementButtonScript || ''}
+                onChange={(e) => onTrackingScriptsChange({ ...trackingScripts, statementButtonScript: e.target.value })}
+                placeholder={"<script>fbq('track', 'Lead');</script>"}
+              />
+            </div>
+          </section>
+          <section className="builder-settings-modal-section">
             <FormBrevoPanel questions={questions} brevoIntegration={brevoIntegration} onChange={onBrevoChange} useApi={useApi} />
           </section>
         </div>
@@ -1869,6 +1937,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
   const [scoring, setScoring] = React.useState(() => (existing?.scoring && typeof existing.scoring === 'object' ? { ...DEFAULT_FORM_SCORING, ...existing.scoring } : { ...DEFAULT_FORM_SCORING }));
   const [majorityProfile, setMajorityProfile] = React.useState(() => normalizeMajorityProfileForLoad(existing?.majorityProfile));
   const [thankYouPage, setThankYouPage] = React.useState(() => normalizeThankYouPageForLoad(existing?.thankYouPage));
+  const [trackingScripts, setTrackingScripts] = React.useState(() => normalizeTrackingForLoad(existing?.trackingScripts));
   const [brevoIntegration, setBrevoIntegration] = React.useState(() => normalizeBrevoIntegrationForLoad(existing?.brevoIntegration));
   const [selectedId, setSelectedId] = React.useState(null);
   const [addModalOpen, setAddModalOpen] = React.useState(false);
@@ -1958,6 +2027,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       setScoring(existing.scoring && typeof existing.scoring === 'object' ? { ...DEFAULT_FORM_SCORING, ...existing.scoring } : { ...DEFAULT_FORM_SCORING });
       setMajorityProfile(normalizeMajorityProfileForLoad(existing.majorityProfile));
       setThankYouPage(normalizeThankYouPageForLoad(existing.thankYouPage));
+      setTrackingScripts(normalizeTrackingForLoad(existing.trackingScripts));
       setBrevoIntegration(normalizeBrevoIntegrationForLoad(existing.brevoIntegration));
       setSelectedId((prev) => (existing.questions?.some((q) => q.id === prev) ? prev : existing.questions?.[0]?.id || null));
     } else {
@@ -1967,6 +2037,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       setScoring({ ...DEFAULT_FORM_SCORING });
       setMajorityProfile(normalizeMajorityProfileForLoad(null));
       setThankYouPage(normalizeThankYouPageForLoad(null));
+      setTrackingScripts(normalizeTrackingForLoad(null));
       setBrevoIntegration(normalizeBrevoIntegrationForLoad(null));
       setSelectedId(null);
     }
@@ -2055,6 +2126,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
       scoring,
       majorityProfile,
       thankYouPage,
+      trackingScripts,
       brevoIntegration,
     };
     setSaving(true);
@@ -2210,6 +2282,8 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
         onMajorityChange={setMajorityProfile}
         thankYouPage={thankYouPage}
         onThankYouPageChange={setThankYouPage}
+        trackingScripts={trackingScripts}
+        onTrackingScriptsChange={setTrackingScripts}
         brevoIntegration={brevoIntegration}
         onBrevoChange={setBrevoIntegration}
         useApi={useApi}
@@ -2230,6 +2304,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
               scoring,
               majorityProfile,
               thankYouPage,
+              trackingScripts,
               brevoIntegration,
             }}
             onClose={() => setPreviewOpen(false)}
@@ -2967,6 +3042,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const [answers, setAnswers] = React.useState({});
   const [history, setHistory] = React.useState([0]);
   const firedSlidePixelsRef = React.useRef(new Set());
+  const executedScriptsRef = React.useRef(new Set());
   const [submittedScore, setSubmittedScore] = React.useState(null); // quiz: { correct, total }
   const [submittedComputedScore, setSubmittedComputedScore] = React.useState(null);
   const [submittedMajorityResult, setSubmittedMajorityResult] = React.useState(null);
@@ -2979,6 +3055,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const showThankYou = step === -1;
   const showOutcomeSlide = step === -2;
   const thankYouPage = normalizeThankYouPageForLoad(form?.thankYouPage);
+  const trackingScripts = normalizeTrackingForLoad(form?.trackingScripts);
   const thankYouTitle = (thankYouPage.title || '').trim();
   const thankYouMessage = (thankYouPage.message || '').trim();
   const thankYouCtaLabel = (thankYouPage.ctaLabel || '').trim();
@@ -3007,6 +3084,21 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
       if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
     });
   }, [currentQuestions, previewMode, form?.id]);
+
+  React.useEffect(() => {
+    if (previewMode) return;
+    if (step !== 0) return;
+    const globalKey = `${form?.id || 'form'}:tracking:global`;
+    if (!executedScriptsRef.current.has(globalKey)) {
+      runScriptSnippet(trackingScripts.globalSnippet);
+      executedScriptsRef.current.add(globalKey);
+    }
+    const firstSlideKey = `${form?.id || 'form'}:tracking:first-slide`;
+    if (!executedScriptsRef.current.has(firstSlideKey)) {
+      runScriptSnippet(trackingScripts.firstSlideScript);
+      executedScriptsRef.current.add(firstSlideKey);
+    }
+  }, [previewMode, step, trackingScripts.globalSnippet, trackingScripts.firstSlideScript, form?.id]);
 
   React.useEffect(() => {
     if (previewMode || !showThankYou) return;
@@ -3038,6 +3130,9 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
 
   const goNext = () => {
     if (!current) return;
+    if (!previewMode && current.type === 'statement') {
+      runScriptSnippet(trackingScripts.statementButtonScript);
+    }
     const result = getNextStepResult(questions, currentIndex, current, answers[current.id]);
     if (result.kind === 'redirect') {
       if (previewMode) {
