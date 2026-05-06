@@ -64,7 +64,6 @@ const DEFAULT_THANK_YOU_PAGE = {
 const DEFAULT_FORM_TRACKING = {
   globalSnippet: '',
   firstSlideScript: '',
-  statementButtonScript: '',
 };
 
 const DEFAULT_FORM_BREVO_INTEGRATION = {
@@ -282,7 +281,6 @@ function normalizeTrackingForLoad(raw) {
     ...raw,
     globalSnippet: String(raw.globalSnippet != null ? raw.globalSnippet : ''),
     firstSlideScript: String(raw.firstSlideScript != null ? raw.firstSlideScript : ''),
-    statementButtonScript: String(raw.statementButtonScript != null ? raw.statementButtonScript : ''),
   };
 }
 
@@ -1902,14 +1900,6 @@ function QuestionnaireSettingsModal({
                 onChange={(e) => onTrackingScriptsChange({ ...trackingScripts, firstSlideScript: e.target.value })}
                 placeholder={"<script>fbq('track', 'PageView');</script>"}
               />
-              <label className="builder-props-label">Script click bottone su slide testo/descrizione</label>
-              <textarea
-                className="builder-props-textarea"
-                rows={4}
-                value={trackingScripts.statementButtonScript || ''}
-                onChange={(e) => onTrackingScriptsChange({ ...trackingScripts, statementButtonScript: e.target.value })}
-                placeholder={"<script>fbq('track', 'Lead');</script>"}
-              />
             </div>
           </section>
           <section className="builder-settings-modal-section">
@@ -2516,25 +2506,17 @@ function QuestionPropertiesPanel({ question, allQuestions, onUpdate, onRemove })
         </>
       )}
       <hr className="builder-scoring-divider" />
-      <h4 className="builder-settings-section-title">Tracking pixel (slide)</h4>
-      <label className="builder-props-label">Pixel URL o snippet</label>
+      <h4 className="builder-settings-section-title">Script bottone di questa slide</h4>
+      <label className="builder-props-label">Snippet al click su Avanti/OK</label>
       <textarea
-        value={question.slidePixelUrl || ''}
-        onChange={(e) => onUpdate({ slidePixelUrl: e.target.value })}
-        placeholder={"https://tracker.example.com/pixel?id=...\n\noppure incolla lo snippet Meta Pixel con fbq('init', '...')"}
+        value={question.slideButtonScript || ''}
+        onChange={(e) => onUpdate({ slideButtonScript: e.target.value })}
+        placeholder={"<script>fbq('track', 'Lead');</script>"}
         className="builder-props-textarea"
-        rows={5}
+        rows={4}
       />
-      <label className="builder-props-checkbox">
-        <input
-          type="checkbox"
-          checked={question.slidePixelFireOnce !== false}
-          onChange={(e) => onUpdate({ slidePixelFireOnce: e.target.checked })}
-        />
-        Attiva una sola volta per compilazione
-      </label>
       <p className="builder-props-help">
-        Supporta URL diretto (image beacon) e snippet Meta Pixel. Il pixel parte quando questa slide viene visualizzata in compilazione (non in anteprima builder).
+        Esegue questo snippet quando clicchi il bottone di questa slide durante la compilazione reale.
       </p>
       {isChoice && (
         <>
@@ -3073,19 +3055,6 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
     : (totalSteps ? Math.min(100, ((history.length) / Math.max(totalSteps, 1)) * 100) : 0);
 
   React.useEffect(() => {
-    if (previewMode || !currentQuestions.length) return;
-    currentQuestions.forEach((q) => {
-      const pixelUrl = String(q?.slidePixelUrl || '').trim();
-      if (!pixelUrl) return;
-      const fireOnce = q?.slidePixelFireOnce !== false;
-      const key = `${form?.id || 'form'}:${q.id}:${pixelUrl}`;
-      if (fireOnce && firedSlidePixelsRef.current.has(key)) return;
-      const fired = fireSlidePixel(pixelUrl);
-      if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
-    });
-  }, [currentQuestions, previewMode, form?.id]);
-
-  React.useEffect(() => {
     if (previewMode) return;
     if (step !== 0) return;
     const globalKey = `${form?.id || 'form'}:tracking:global`;
@@ -3130,8 +3099,8 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
 
   const goNext = () => {
     if (!current) return;
-    if (!previewMode && current.type === 'statement') {
-      runScriptSnippet(trackingScripts.statementButtonScript);
+    if (!previewMode) {
+      runScriptSnippet(current.slideButtonScript);
     }
     const result = getNextStepResult(questions, currentIndex, current, answers[current.id]);
     if (result.kind === 'redirect') {
