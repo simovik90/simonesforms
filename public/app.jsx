@@ -863,6 +863,7 @@ function appendAutoplayToEmbedUrl(embedUrl) {
     const host = u.hostname;
     if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
       u.searchParams.set('autoplay', '1');
+      u.searchParams.set('mute', '1');
       u.searchParams.set('playsinline', '1');
     } else if (host.includes('vimeo.com')) {
       u.searchParams.set('autoplay', '1');
