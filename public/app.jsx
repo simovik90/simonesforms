@@ -1523,6 +1523,19 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
         onChange={(e) => patch({ listName: e.target.value })}
         placeholder="Es. Lead da questionario X"
       />
+      <label className="builder-props-label">ID lista Brevo manuale (prioritario)</label>
+      <input
+        type="text"
+        inputMode="numeric"
+        className="builder-props-input"
+        disabled={disabledAll}
+        value={brevoIntegration.listId != null ? String(brevoIntegration.listId) : ''}
+        onChange={(e) => patch({ listId: e.target.value })}
+        placeholder="Es. 123"
+      />
+      <p className="builder-props-help" style={{ marginTop: '-0.25rem' }}>
+        Se inserisci questo ID, l’invio va sempre a quella lista (anche se cambi il nome lista).
+      </p>
       <div className="builder-brevo-folder-row">
         <label className="builder-props-label" style={{ marginTop: 0 }}>Cartella Brevo (per creare la lista)</label>
         <button
@@ -1803,8 +1816,34 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
   const [settingsModalSaveBusy, setSettingsModalSaveBusy] = React.useState(false);
 
   const handleQuestionnaireModalSave = React.useCallback(async () => {
+    if (!useApi) {
+      setQuestionnaireSettingsOpen(false);
+      return;
+    }
+    const manualListIdRaw = String(brevoIntegration.listId ?? '').trim();
+    if (manualListIdRaw !== '') {
+      const manualListId = Number(manualListIdRaw);
+      if (Number.isNaN(manualListId) || manualListId <= 0) {
+        window.alert('ID lista Brevo non valido: inserisci un numero intero positivo.');
+        return;
+      }
+      setBrevoIntegration((prev) =>
+        normalizeBrevoIntegrationForLoad({
+          ...prev,
+          listId: manualListId,
+        })
+      );
+      setQuestionnaireSettingsOpen(false);
+      return;
+    }
     const name = String(brevoIntegration.listName || '').trim();
-    if (!name || !useApi) {
+    if (!name) {
+      setBrevoIntegration((prev) =>
+        normalizeBrevoIntegrationForLoad({
+          ...prev,
+          listId: null,
+        })
+      );
       setQuestionnaireSettingsOpen(false);
       return;
     }
@@ -1844,7 +1883,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
     }
     setSettingsModalSaveBusy(false);
     setQuestionnaireSettingsOpen(false);
-  }, [brevoIntegration.listName, brevoIntegration.brevoFolderId, useApi]);
+  }, [brevoIntegration.listName, brevoIntegration.brevoFolderId, brevoIntegration.listId, useApi]);
 
   React.useEffect(() => {
     if (existing) {
