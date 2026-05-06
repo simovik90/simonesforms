@@ -341,6 +341,44 @@ function runScriptSnippet(rawSnippet) {
   }
 }
 
+function injectSnippetInHead(rawSnippet, key) {
+  const source = String(rawSnippet || '').trim();
+  if (!source || !key) return false;
+  if (document.head.querySelector(`script[data-tracking-head-key="${key}"]`)) return true;
+  try {
+    const hasScriptTag = /<script\b/i.test(source);
+    if (hasScriptTag) {
+      const regex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+      let matched = false;
+      let m;
+      while ((m = regex.exec(source)) !== null) {
+        matched = true;
+        const attrsRaw = m[1] || '';
+        const body = m[2] || '';
+        const scriptEl = document.createElement('script');
+        scriptEl.setAttribute('data-tracking-head-key', key);
+        const srcMatch = attrsRaw.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+        if (srcMatch && srcMatch[1]) {
+          scriptEl.src = srcMatch[1];
+          scriptEl.async = /\basync\b/i.test(attrsRaw);
+          if (/\bdefer\b/i.test(attrsRaw)) scriptEl.defer = true;
+        } else {
+          scriptEl.text = body;
+        }
+        document.head.appendChild(scriptEl);
+      }
+      if (matched) return true;
+    }
+    const scriptEl = document.createElement('script');
+    scriptEl.setAttribute('data-tracking-head-key', key);
+    scriptEl.text = source.replace(/<!--[\s\S]*?-->/g, '').trim();
+    document.head.appendChild(scriptEl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function collectProfileTagsFromQuestions(questions) {
   const set = new Set();
   (questions || []).forEach((q) => {
@@ -3059,7 +3097,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
     if (step !== 0) return;
     const globalKey = `${form?.id || 'form'}:tracking:global`;
     if (!executedScriptsRef.current.has(globalKey)) {
-      runScriptSnippet(trackingScripts.globalSnippet);
+      injectSnippetInHead(trackingScripts.globalSnippet, globalKey);
       executedScriptsRef.current.add(globalKey);
     }
     const firstSlideKey = `${form?.id || 'form'}:tracking:first-slide`;
