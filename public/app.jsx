@@ -2417,13 +2417,13 @@ function QuestionPropertiesPanel({ question, allQuestions, onUpdate, onRemove })
       )}
       <hr className="builder-scoring-divider" />
       <h4 className="builder-settings-section-title">Tracking pixel (slide)</h4>
-      <label className="builder-props-label">URL pixel</label>
-      <input
-        type="url"
+      <label className="builder-props-label">Pixel URL o snippet</label>
+      <textarea
         value={question.slidePixelUrl || ''}
         onChange={(e) => onUpdate({ slidePixelUrl: e.target.value })}
-        placeholder="https://tracker.example.com/pixel?id=..."
-        className="builder-props-input"
+        placeholder={"https://tracker.example.com/pixel?id=...\n\noppure incolla lo snippet Meta Pixel con fbq('init', '...')"}
+        className="builder-props-textarea"
+        rows={5}
       />
       <label className="builder-props-checkbox">
         <input
@@ -2434,7 +2434,7 @@ function QuestionPropertiesPanel({ question, allQuestions, onUpdate, onRemove })
         Attiva una sola volta per compilazione
       </label>
       <p className="builder-props-help">
-        Il pixel parte quando questa slide viene visualizzata in compilazione (non in anteprima builder).
+        Supporta URL diretto (image beacon) e snippet Meta Pixel. Il pixel parte quando questa slide viene visualizzata in compilazione (non in anteprima builder).
       </p>
       {isChoice && (
         <>
