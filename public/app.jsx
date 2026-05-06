@@ -57,6 +57,8 @@ const DEFAULT_THANK_YOU_PAGE = {
   ctaLabel: '',
   ctaUrl: '',
   ctaNewTab: true,
+  pixelSnippet: '',
+  pixelFireOnce: true,
 };
 
 const DEFAULT_FORM_BREVO_INTEGRATION = {
@@ -262,6 +264,8 @@ function normalizeThankYouPageForLoad(raw) {
     ctaLabel: String(raw.ctaLabel != null ? raw.ctaLabel : ''),
     ctaUrl: String(raw.ctaUrl != null ? raw.ctaUrl : ''),
     ctaNewTab: raw.ctaNewTab !== false,
+    pixelSnippet: String(raw.pixelSnippet != null ? raw.pixelSnippet : ''),
+    pixelFireOnce: raw.pixelFireOnce !== false,
   };
 }
 
@@ -1817,6 +1821,27 @@ function QuestionnaireSettingsModal({
                 />
                 Apri il link in una nuova scheda
               </label>
+              <hr className="builder-scoring-divider" />
+              <h4 className="builder-settings-section-title">Tracking pixel (thank-you page)</h4>
+              <label className="builder-props-label">Pixel URL o snippet</label>
+              <textarea
+                className="builder-props-textarea"
+                rows={5}
+                value={thankYouPage.pixelSnippet || ''}
+                onChange={(e) => onThankYouPageChange({ ...thankYouPage, pixelSnippet: e.target.value })}
+                placeholder={"https://tracker.example.com/pixel?id=...\n\noppure incolla lo snippet Meta Pixel con fbq('init', '...')"}
+              />
+              <label className="builder-props-checkbox">
+                <input
+                  type="checkbox"
+                  checked={thankYouPage.pixelFireOnce !== false}
+                  onChange={(e) => onThankYouPageChange({ ...thankYouPage, pixelFireOnce: e.target.checked })}
+                />
+                Attiva una sola volta per compilazione
+              </label>
+              <p className="builder-props-help">
+                Il pixel parte quando viene mostrata la thank-you page (non in anteprima builder).
+              </p>
             </div>
           </section>
           <section className="builder-settings-modal-section">
@@ -2982,6 +3007,17 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
       if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
     });
   }, [currentQuestions, previewMode, form?.id]);
+
+  React.useEffect(() => {
+    if (previewMode || !showThankYou) return;
+    const pixel = String(thankYouPage.pixelSnippet || '').trim();
+    if (!pixel) return;
+    const fireOnce = thankYouPage.pixelFireOnce !== false;
+    const key = `${form?.id || 'form'}:thankyou:${pixel}`;
+    if (fireOnce && firedSlidePixelsRef.current.has(key)) return;
+    const fired = fireSlidePixel(pixel);
+    if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
+  }, [previewMode, showThankYou, thankYouPage.pixelSnippet, thankYouPage.pixelFireOnce, form?.id]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((a) => ({ ...a, [questionId]: value }));
