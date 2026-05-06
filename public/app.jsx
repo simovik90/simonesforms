@@ -265,6 +265,21 @@ function normalizeThankYouPageForLoad(raw) {
   };
 }
 
+function fireSlidePixel(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer-when-downgrade';
+    img.src = parsed.toString();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function collectProfileTagsFromQuestions(questions) {
   const set = new Set();
   (questions || []).forEach((q) => {
@@ -2375,6 +2390,27 @@ function QuestionPropertiesPanel({ question, allQuestions, onUpdate, onRemove })
           <p className="builder-props-help">Su mobile il video è sempre sotto il testo; avvio automatico in muto.</p>
         </>
       )}
+      <hr className="builder-scoring-divider" />
+      <h4 className="builder-settings-section-title">Tracking pixel (slide)</h4>
+      <label className="builder-props-label">URL pixel</label>
+      <input
+        type="url"
+        value={question.slidePixelUrl || ''}
+        onChange={(e) => onUpdate({ slidePixelUrl: e.target.value })}
+        placeholder="https://tracker.example.com/pixel?id=..."
+        className="builder-props-input"
+      />
+      <label className="builder-props-checkbox">
+        <input
+          type="checkbox"
+          checked={question.slidePixelFireOnce !== false}
+          onChange={(e) => onUpdate({ slidePixelFireOnce: e.target.checked })}
+        />
+        Attiva una sola volta per compilazione
+      </label>
+      <p className="builder-props-help">
+        Il pixel parte quando questa slide viene visualizzata in compilazione (non in anteprima builder).
+      </p>
       {isChoice && (
         <>
           <label className="builder-props-label">Opzioni</label>
@@ -2880,6 +2916,7 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const [step, setStep] = React.useState(0);
   const [answers, setAnswers] = React.useState({});
   const [history, setHistory] = React.useState([0]);
+  const firedSlidePixelsRef = React.useRef(new Set());
   const [submittedScore, setSubmittedScore] = React.useState(null); // quiz: { correct, total }
   const [submittedComputedScore, setSubmittedComputedScore] = React.useState(null);
   const [submittedMajorityResult, setSubmittedMajorityResult] = React.useState(null);
@@ -2907,6 +2944,19 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const progress = showThankYou || showOutcomeSlide
     ? 100
     : (totalSteps ? Math.min(100, ((history.length) / Math.max(totalSteps, 1)) * 100) : 0);
+
+  React.useEffect(() => {
+    if (previewMode || !currentQuestions.length) return;
+    currentQuestions.forEach((q) => {
+      const pixelUrl = String(q?.slidePixelUrl || '').trim();
+      if (!pixelUrl) return;
+      const fireOnce = q?.slidePixelFireOnce !== false;
+      const key = `${form?.id || 'form'}:${q.id}:${pixelUrl}`;
+      if (fireOnce && firedSlidePixelsRef.current.has(key)) return;
+      const fired = fireSlidePixel(pixelUrl);
+      if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
+    });
+  }, [currentQuestions, previewMode, form?.id]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((a) => ({ ...a, [questionId]: value }));
