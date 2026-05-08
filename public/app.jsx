@@ -532,6 +532,18 @@ function formatComputedScoreValue(value) {
   return String(r);
 }
 
+function formatMoneyEUR(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '€0,00';
+  return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
+}
+
+function formatNumber(value, digits = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  return new Intl.NumberFormat('it-IT', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+}
+
 const STORAGE_FORMS = 'mytypeform_forms';
 const STORAGE_RESPONSES = 'mytypeform_responses';
 const STORAGE_THEME = 'mytypeform_theme';
@@ -1121,6 +1133,12 @@ function App() {
             Deal
           </button>
           <button
+            className={view === 'metaads' ? 'active' : ''}
+            onClick={() => { setView('metaads'); setEditingFormId(null); setFillingFormId(null); setResultsFormId(null); }}
+          >
+            Meta Ads
+          </button>
+          <button
             className={view === 'builder' ? 'active' : ''}
             onClick={() => { setView('builder'); setEditingFormId(null); }}
           >
@@ -1197,6 +1215,13 @@ function App() {
           <DealsView
             forms={forms}
             useApi={useApi}
+          />
+        )}
+        {view === 'metaads' && (
+          <MetaAdsView
+            forms={forms}
+            useApi={useApi}
+            saveForm={saveForm}
           />
         )}
       </main>
@@ -3318,6 +3343,405 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function MetaAdsView({ forms, useApi, saveForm }) {
+  const [since, setSince] = React.useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [until, setUntil] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [adAccounts, setAdAccounts] = React.useState([]);
+  const [selectedCampaignsByForm, setSelectedCampaignsByForm] = React.useState({});
+  const [campaignOptionsByForm, setCampaignOptionsByForm] = React.useState({});
+  const [campaignsLoadingByForm, setCampaignsLoadingByForm] = React.useState({});
+  const [loading, setLoading] = React.useState(false);
+  const [savingFormId, setSavingFormId] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const [reportRows, setReportRows] = React.useState([]);
+
+  React.useEffect(() => {
+    const nextSelected = {};
+    forms.forEach((form) => {
+      const ids = Array.isArray(form?.metaAds?.campaignIds) ? form.metaAds.campaignIds : [];
+      nextSelected[form.id] = ids.map((x) => String(x));
+    });
+    setSelectedCampaignsByForm(nextSelected);
+  }, [forms]);
+
+  const loadAdAccounts = React.useCallback(() => {
+    if (!useApi) {
+      setAdAccounts([]);
+      return;
+    }
+    fetch('/api/meta/adaccounts')
+      .then((r) => r.ok ? r.json() : readFetchJsonBody(r).then((d) => Promise.reject(new Error(d?.error || 'Errore account Meta'))))
+      .then((d) => setAdAccounts(Array.isArray(d.data) ? d.data : []))
+      .catch(() => setAdAccounts([]));
+  }, [useApi]);
+
+  React.useEffect(() => {
+    loadAdAccounts();
+  }, [loadAdAccounts]);
+
+  const loadCampaignsForForm = React.useCallback((formId, accountId) => {
+    const cleanAccountId = String(accountId || '').trim();
+    if (!useApi || !cleanAccountId) {
+      setCampaignOptionsByForm((prev) => ({ ...prev, [formId]: [] }));
+      return Promise.resolve();
+    }
+    setCampaignsLoadingByForm((prev) => ({ ...prev, [formId]: true }));
+    return fetch('/api/meta/campaigns?accountId=' + encodeURIComponent(cleanAccountId) + '&limit=500')
+      .then((r) => r.ok ? r.json() : readFetchJsonBody(r).then((d) => Promise.reject(new Error(d?.error || 'Errore campagne Meta'))))
+      .then((d) => {
+        const options = Array.isArray(d.data) ? d.data : [];
+        setCampaignOptionsByForm((prev) => ({ ...prev, [formId]: options }));
+      })
+      .catch(() => {
+        setCampaignOptionsByForm((prev) => ({ ...prev, [formId]: [] }));
+      })
+      .finally(() => {
+        setCampaignsLoadingByForm((prev) => ({ ...prev, [formId]: false }));
+      });
+  }, [useApi]);
+
+  React.useEffect(() => {
+    if (!useApi) return;
+    forms.forEach((form) => {
+      const accountId = String(form?.metaAds?.accountId || '').trim();
+      if (!accountId) return;
+      if (campaignOptionsByForm[form.id] && campaignOptionsByForm[form.id].length > 0) return;
+      loadCampaignsForForm(form.id, accountId);
+    });
+  }, [forms, useApi, campaignOptionsByForm, loadCampaignsForForm]);
+
+  const saveMetaConfig = async (form) => {
+    if (!saveForm) return;
+    const campaignIds = Array.isArray(selectedCampaignsByForm[form.id])
+      ? selectedCampaignsByForm[form.id].map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const nextForm = {
+      ...form,
+      metaAds: {
+        enabled: Boolean(form?.metaAds?.enabled),
+        accountId: String(form?.metaAds?.accountId || '').trim(),
+        campaignIds,
+      },
+    };
+    setSavingFormId(form.id);
+    try {
+      await saveForm(nextForm);
+    } finally {
+      setSavingFormId(null);
+    }
+  };
+
+  const toggleEnabled = async (form, checked) => {
+    if (!saveForm) return;
+    const nextForm = {
+      ...form,
+      metaAds: {
+        enabled: checked,
+        accountId: String(form?.metaAds?.accountId || '').trim(),
+        campaignIds: Array.isArray(form?.metaAds?.campaignIds) ? form.metaAds.campaignIds : [],
+      },
+    };
+    setSavingFormId(form.id);
+    try {
+      await saveForm(nextForm);
+    } finally {
+      setSavingFormId(null);
+    }
+  };
+
+  const updateAccountId = async (form, accountId) => {
+    if (!saveForm) return;
+    const cleanAccountId = String(accountId || '').trim();
+    setSelectedCampaignsByForm((prev) => ({ ...prev, [form.id]: [] }));
+    await loadCampaignsForForm(form.id, cleanAccountId);
+    const nextForm = {
+      ...form,
+      metaAds: {
+        enabled: Boolean(form?.metaAds?.enabled),
+        accountId: cleanAccountId,
+        campaignIds: [],
+      },
+    };
+    setSavingFormId(form.id);
+    try {
+      await saveForm(nextForm);
+    } finally {
+      setSavingFormId(null);
+    }
+  };
+
+  const runReport = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const configuredForms = forms.filter((form) => {
+        const cfg = form?.metaAds || {};
+        return cfg.enabled && String(cfg.accountId || '').trim() && Array.isArray(cfg.campaignIds) && cfg.campaignIds.length > 0;
+      });
+      if (!configuredForms.length) {
+        setReportRows([]);
+        setError('Configura almeno un form (enabled + accountId + campaignIds) per calcolare i KPI.');
+        return;
+      }
+
+      const responsesByForm = {};
+      if (useApi) {
+        const responsesChunks = await Promise.all(configuredForms.map((form) =>
+          fetch('/api/forms/' + encodeURIComponent(form.id) + '/responses')
+            .then((r) => r.ok ? r.json() : [])
+            .catch(() => [])
+        ));
+        configuredForms.forEach((form, idx) => {
+          responsesByForm[form.id] = Array.isArray(responsesChunks[idx]) ? responsesChunks[idx] : [];
+        });
+      } else {
+        const local = getResponsesLocal();
+        configuredForms.forEach((form) => {
+          responsesByForm[form.id] = Array.isArray(local[form.id]) ? local[form.id] : [];
+        });
+      }
+
+      const accountIds = configuredForms
+        .map((f) => String(f.metaAds?.accountId || '').trim())
+        .filter((x, idx, arr) => x && arr.indexOf(x) === idx);
+      const insightsByAccountCampaign = {};
+      await Promise.all(accountIds.map(async (accountId) => {
+        const params = new URLSearchParams({
+          accountId,
+          level: 'campaign',
+          since,
+          until,
+          limit: '5000',
+        });
+        const data = await fetch('/api/meta/insights?' + params.toString())
+          .then((r) => r.ok ? r.json() : readFetchJsonBody(r).then((d) => Promise.reject(new Error(d?.error || 'Errore insights Meta'))));
+        const aggregate = {};
+        (data?.data || []).forEach((row) => {
+          const campaignId = String(row.campaign_id || '').trim();
+          if (!campaignId) return;
+          if (!aggregate[campaignId]) aggregate[campaignId] = { spend: 0, clicks: 0, impressions: 0 };
+          aggregate[campaignId].spend += Number(row.spend || 0);
+          aggregate[campaignId].clicks += Number(row.clicks || 0);
+          aggregate[campaignId].impressions += Number(row.impressions || 0);
+        });
+        insightsByAccountCampaign[accountId] = aggregate;
+      }));
+
+      const sinceMs = new Date(since + 'T00:00:00').getTime();
+      const untilMs = new Date(until + 'T23:59:59').getTime();
+      const rows = configuredForms.map((form) => {
+        const cfg = form.metaAds || {};
+        const stats = { spend: 0, clicks: 0, impressions: 0 };
+        (cfg.campaignIds || []).forEach((cid) => {
+          const row = insightsByAccountCampaign[cfg.accountId]?.[cid];
+          if (!row) return;
+          stats.spend += row.spend;
+          stats.clicks += row.clicks;
+          stats.impressions += row.impressions;
+        });
+        const responsesCount = (responsesByForm[form.id] || []).reduce((acc, response) => {
+          const ts = new Date(String(response?.date || '')).getTime();
+          if (!Number.isFinite(ts)) return acc;
+          return (ts >= sinceMs && ts <= untilMs) ? acc + 1 : acc;
+        }, 0);
+        const cpc = stats.clicks > 0 ? stats.spend / stats.clicks : null;
+        const cpl = responsesCount > 0 ? stats.spend / responsesCount : null;
+        return {
+          formId: form.id,
+          formTitle: form.title || form.id,
+          accountId: cfg.accountId,
+          campaignCount: (cfg.campaignIds || []).length,
+          spend: stats.spend,
+          clicks: stats.clicks,
+          impressions: stats.impressions,
+          responsesCount,
+          cpc,
+          cpl,
+        };
+      });
+      rows.sort((a, b) => b.spend - a.spend);
+      setReportRows(rows);
+    } catch (e) {
+      setError(e?.message || 'Errore durante il calcolo KPI Meta.');
+      setReportRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: '1rem' }}>
+        <h2 style={{ marginBottom: '0.35rem' }}>Meta Ads KPI</h2>
+        <p style={{ color: 'var(--text-muted)' }}>
+          Associa campagne ai questionari e calcola KPI utili (spesa, click, CPC, CPL) sul periodo scelto.
+        </p>
+      </div>
+
+      {!useApi ? (
+        <div className="empty-state">
+          <p>Questa sezione richiede la modalità server/API (`npm start`).</p>
+        </div>
+      ) : (
+        <>
+          <section className="card-section" style={{ marginBottom: '1rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'end' }}>
+              <label style={{ display: 'grid', gap: '0.35rem' }}>
+                Dal
+                <input type="date" className="crm-input" value={since} onChange={(e) => setSince(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: '0.35rem' }}>
+                Al
+                <input type="date" className="crm-input" value={until} onChange={(e) => setUntil(e.target.value)} />
+              </label>
+              <button type="button" className="btn-primary" onClick={runReport} disabled={loading}>
+                {loading ? 'Calcolo KPI...' : 'Calcola KPI'}
+              </button>
+            </div>
+            {error ? <p style={{ marginTop: '0.75rem', color: '#ef4444' }}>{error}</p> : null}
+          </section>
+
+          <section className="card-section" style={{ marginBottom: '1rem', padding: '1rem' }}>
+            <h3 style={{ marginBottom: '0.6rem' }}>Configurazione per questionario</h3>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {forms.map((form) => {
+                const cfg = form?.metaAds || {};
+                const accountId = String(cfg.accountId || '');
+                const campaignOptions = Array.isArray(campaignOptionsByForm[form.id]) ? campaignOptionsByForm[form.id] : [];
+                const selectedCampaignIds = Array.isArray(selectedCampaignsByForm[form.id]) ? selectedCampaignsByForm[form.id] : [];
+                return (
+                  <div key={form.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong>{form.title || form.id}</strong>
+                      <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(cfg.enabled)}
+                          onChange={(e) => toggleEnabled(form, e.target.checked)}
+                          disabled={savingFormId === form.id}
+                        />
+                        Attiva Meta
+                      </label>
+                    </div>
+                    <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.6rem' }}>
+                      <label style={{ display: 'grid', gap: '0.3rem' }}>
+                        Account
+                        <select
+                          className="crm-input"
+                          value={accountId}
+                          onChange={(e) => updateAccountId(form, e.target.value)}
+                          disabled={savingFormId === form.id}
+                        >
+                          <option value="">Seleziona account...</option>
+                          {adAccounts.map((acc) => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.id})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: 'grid', gap: '0.3rem' }}>
+                        Campagne (multi-selezione)
+                        <select
+                          className="crm-input"
+                          multiple
+                          size={Math.min(8, Math.max(3, campaignOptions.length || 3))}
+                          value={selectedCampaignIds}
+                          onChange={(e) => {
+                            const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                            setSelectedCampaignsByForm((prev) => ({ ...prev, [form.id]: values }));
+                          }}
+                          disabled={!accountId || campaignsLoadingByForm[form.id]}
+                        >
+                          {campaignOptions.map((c) => (
+                            <option key={c.id} value={String(c.id)}>
+                              {(c.name || c.id)} ({c.id})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setSelectedCampaignsByForm((prev) => ({
+                            ...prev,
+                            [form.id]: campaignOptions.map((c) => String(c.id)),
+                          }))}
+                          disabled={!campaignOptions.length}
+                        >
+                          Seleziona tutte
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setSelectedCampaignsByForm((prev) => ({ ...prev, [form.id]: [] }))}
+                        >
+                          Pulisci
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={() => saveMetaConfig(form)} disabled={savingFormId === form.id}>
+                          {savingFormId === form.id ? 'Salvataggio...' : 'Salva campagne'}
+                        </button>
+                      </div>
+                      {campaignsLoadingByForm[form.id] ? (
+                        <p style={{ color: 'var(--text-muted)', margin: 0 }}>Caricamento campagne...</p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="card-section" style={{ padding: '1rem' }}>
+            <h3 style={{ marginBottom: '0.6rem' }}>Report KPI per questionario</h3>
+            {reportRows.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>Nessun report calcolato.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.92rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Form</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Account</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Campagne</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Spesa</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Click</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Impression</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Lead (invii)</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>CPC</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>CPL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.map((row) => (
+                      <tr key={row.formId}>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)' }}>{row.formTitle}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)' }}>{row.accountId}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.campaignCount)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatMoneyEUR(row.spend)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.clicks)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.impressions)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.responsesCount)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{row.cpc == null ? '—' : formatMoneyEUR(row.cpc)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{row.cpl == null ? '—' : formatMoneyEUR(row.cpl)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

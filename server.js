@@ -23,6 +23,7 @@ const app = express();
 const AUTH_EMAIL = String(process.env.AUTH_EMAIL || 'simone@mscommunication.it').trim().toLowerCase();
 const AUTH_PASSWORD = String(process.env.AUTH_PASSWORD || '').trim();
 const COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const META_OAUTH_STATE_COOKIE = 'meta_oauth_state';
 
 function timingSafePasswordOk(provided) {
   const a = Buffer.from(AUTH_PASSWORD, 'utf8');
@@ -41,6 +42,8 @@ function isPublicApiRoute(method, p) {
   if (p === '/api/auth/login' && method === 'POST') return true;
   if (p === '/api/auth/logout' && method === 'POST') return true;
   if (p === '/api/auth/me' && method === 'GET') return true;
+  if (p === '/api/meta/oauth/connect' && method === 'GET') return true;
+  if (p === '/api/meta/oauth/callback' && method === 'GET') return true;
   if (isPublicFormsApiRoute(method, p)) return true;
   return false;
 }
@@ -96,6 +99,265 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/me', (req, res) => {
   res.json({ authenticated: isAuthenticated(req) });
+});
+
+function getExternalOrigin(req) {
+  const protoHeader = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = protoHeader || req.protocol || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (!host) return null;
+  return `${protocol}://${host}`;
+}
+
+function getMetaRedirectUri(req) {
+  const configured = String(process.env.META_OAUTH_REDIRECT_URI || '').trim();
+  if (configured) return configured;
+  const origin = getExternalOrigin(req);
+  if (!origin) return null;
+  return `${origin}/api/meta/oauth/callback`;
+}
+
+function metaApiRequest(pathWithQuery) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'graph.facebook.com',
+        port: 443,
+        path: pathWithQuery,
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'MyTypeform/1.0 (Node.js)',
+        },
+      },
+      (res) => {
+        let buf = '';
+        res.on('data', (c) => {
+          buf += c;
+        });
+        res.on('end', () => {
+          let json = {};
+          try {
+            json = buf ? JSON.parse(buf) : {};
+          } catch (_) {
+            json = { message: buf ? String(buf).slice(0, 500) : '' };
+          }
+          if (res.statusCode >= 400 || json.error) {
+            const msg = json?.error?.message || json?.message || `Meta HTTP ${res.statusCode}`;
+            const err = new Error(String(msg));
+            err.status = res.statusCode;
+            err.detail = json;
+            return reject(err);
+          }
+          resolve(json);
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function getMetaAccessToken(req) {
+  const auth = String(req.headers.authorization || '');
+  if (auth.toLowerCase().startsWith('bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
+  }
+  const fromQuery = String(req.query?.accessToken || '').trim();
+  if (fromQuery) return fromQuery;
+  const fromEnv = String(process.env.META_ACCESS_TOKEN || '').trim();
+  if (fromEnv) return fromEnv;
+  return '';
+}
+
+function parseInsightsLevel(raw) {
+  const level = String(raw || 'account').trim().toLowerCase();
+  if (level === 'account' || level === 'campaign' || level === 'adset' || level === 'ad') return level;
+  return null;
+}
+
+function parsePositiveInt(raw, fallback) {
+  const n = Number(String(raw == null ? fallback : raw).trim());
+  if (Number.isNaN(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function parseIsoDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
+}
+
+app.get('/api/meta/oauth/connect', (req, res) => {
+  const appId = String(process.env.META_APP_ID || '').trim();
+  if (!appId) return res.status(503).json({ error: 'META_APP_ID mancante nel server' });
+  const redirectUri = getMetaRedirectUri(req);
+  if (!redirectUri) return res.status(400).json({ error: 'Impossibile calcolare redirect URI' });
+  const scopes = String(process.env.META_OAUTH_SCOPES || 'ads_read').trim();
+  const state = crypto.randomBytes(24).toString('hex');
+  const params = new URLSearchParams({
+    client_id: appId,
+    redirect_uri: redirectUri,
+    state,
+    response_type: 'code',
+    scope: scopes,
+  });
+  const authUrl = `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`;
+  res.cookie(META_OAUTH_STATE_COOKIE, state, {
+    signed: true,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.AUTH_HTTPS === '1',
+    maxAge: 15 * 60 * 1000,
+    path: '/',
+  });
+  if (String(req.query.mode || '').toLowerCase() === 'json') {
+    return res.json({ authUrl, redirectUri, scopes: scopes.split(',').map((x) => x.trim()).filter(Boolean) });
+  }
+  return res.redirect(authUrl);
+});
+
+app.get('/api/meta/oauth/callback', async (req, res) => {
+  const state = String(req.query?.state || '');
+  const code = String(req.query?.code || '');
+  const error = String(req.query?.error || '');
+  const errorReason = String(req.query?.error_reason || '');
+  const errorDescription = String(req.query?.error_description || '');
+  const expectedState = req.signedCookies?.[META_OAUTH_STATE_COOKIE];
+  if (error) {
+    return res.status(400).json({
+      ok: false,
+      error,
+      errorReason: errorReason || null,
+      errorDescription: errorDescription || null,
+    });
+  }
+  if (!state || !expectedState || state !== expectedState) {
+    return res.status(400).json({ ok: false, error: 'OAuth state non valido o scaduto' });
+  }
+  if (!code) return res.status(400).json({ ok: false, error: 'Parametro code mancante' });
+  res.clearCookie(META_OAUTH_STATE_COOKIE, { path: '/' });
+  const appId = String(process.env.META_APP_ID || '').trim();
+  const appSecret = String(process.env.META_APP_SECRET || '').trim();
+  const redirectUri = getMetaRedirectUri(req);
+  if (!appId || !appSecret || !redirectUri) {
+    return res.json({
+      ok: true,
+      code,
+      note: 'Ricevuto code OAuth. Configura META_APP_ID, META_APP_SECRET e META_OAUTH_REDIRECT_URI per scambio token automatico.',
+    });
+  }
+  try {
+    const params = new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      redirect_uri: redirectUri,
+      code,
+    });
+    const tokenData = await metaApiRequest(`/v22.0/oauth/access_token?${params.toString()}`);
+    return res.json({
+      ok: true,
+      accessToken: tokenData.access_token || null,
+      tokenType: tokenData.token_type || null,
+      expiresIn: tokenData.expires_in || null,
+    });
+  } catch (e) {
+    return res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
+      ok: false,
+      error: e.message || 'Errore scambio token Meta',
+      detail: e.detail || null,
+    });
+  }
+});
+
+app.get('/api/meta/adaccounts', async (req, res) => {
+  const token = getMetaAccessToken(req);
+  if (!token) {
+    return res.status(400).json({ error: 'Access token mancante: usa Authorization Bearer o META_ACCESS_TOKEN' });
+  }
+  try {
+    const params = new URLSearchParams({
+      fields: 'id,name,account_status,currency,timezone_name',
+      access_token: token,
+      limit: String(parsePositiveInt(req.query?.limit, 100)),
+    });
+    const data = await metaApiRequest(`/v22.0/me/adaccounts?${params.toString()}`);
+    return res.json({ data: Array.isArray(data.data) ? data.data : [], paging: data.paging || null });
+  } catch (e) {
+    return res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
+      error: e.message || 'Errore lettura ad accounts Meta',
+      detail: e.detail || null,
+    });
+  }
+});
+
+app.get('/api/meta/campaigns', async (req, res) => {
+  const token = getMetaAccessToken(req);
+  if (!token) {
+    return res.status(400).json({ error: 'Access token mancante: usa Authorization Bearer o META_ACCESS_TOKEN' });
+  }
+  const accountId = String(req.query?.accountId || '').trim();
+  if (!accountId || !accountId.startsWith('act_')) {
+    return res.status(400).json({ error: 'accountId richiesto (formato: act_...)' });
+  }
+  try {
+    const params = new URLSearchParams({
+      fields: 'id,name,status,objective',
+      access_token: token,
+      limit: String(parsePositiveInt(req.query?.limit, 200)),
+    });
+    const data = await metaApiRequest(`/v22.0/${encodeURIComponent(accountId)}/campaigns?${params.toString()}`);
+    return res.json({ data: Array.isArray(data.data) ? data.data : [], paging: data.paging || null });
+  } catch (e) {
+    return res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
+      error: e.message || 'Errore lettura campagne Meta',
+      detail: e.detail || null,
+    });
+  }
+});
+
+app.get('/api/meta/insights', async (req, res) => {
+  const token = getMetaAccessToken(req);
+  if (!token) {
+    return res.status(400).json({ error: 'Access token mancante: usa Authorization Bearer o META_ACCESS_TOKEN' });
+  }
+  const accountId = String(req.query?.accountId || '').trim();
+  if (!accountId || !accountId.startsWith('act_')) {
+    return res.status(400).json({ error: 'accountId richiesto (formato: act_...)' });
+  }
+  const level = parseInsightsLevel(req.query?.level);
+  if (!level) {
+    return res.status(400).json({ error: "level non valido: usa 'account' | 'campaign' | 'adset' | 'ad'" });
+  }
+  const since = parseIsoDate(req.query?.since);
+  const until = parseIsoDate(req.query?.until);
+  if ((since && !until) || (!since && until)) {
+    return res.status(400).json({ error: "Usa entrambi 'since' e 'until' (YYYY-MM-DD) oppure nessuno dei due" });
+  }
+  try {
+    const params = new URLSearchParams({
+      access_token: token,
+      fields: 'date_start,date_stop,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,cpc,cpm,ctr',
+      level,
+      time_increment: String(parsePositiveInt(req.query?.timeIncrement, 1)),
+      limit: String(parsePositiveInt(req.query?.limit, 500)),
+    });
+    if (since && until) params.set('time_range', JSON.stringify({ since, until }));
+    else params.set('date_preset', String(req.query?.datePreset || 'last_30d'));
+    const data = await metaApiRequest(`/v22.0/${encodeURIComponent(accountId)}/insights?${params.toString()}`);
+    return res.json({
+      data: Array.isArray(data.data) ? data.data : [],
+      paging: data.paging || null,
+      meta: { accountId, level, since: since || null, until: until || null, datePreset: since ? null : String(req.query?.datePreset || 'last_30d') },
+    });
+  } catch (e) {
+    return res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
+      error: e.message || 'Errore lettura insights Meta',
+      detail: e.detail || null,
+    });
+  }
 });
 
 function readForms() {
