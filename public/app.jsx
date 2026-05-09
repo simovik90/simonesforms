@@ -122,6 +122,93 @@ async function readFetchJsonBody(res) {
   return d;
 }
 
+/** Nuovo form id univoco (duplicati). */
+function genDuplicateFormId() {
+  return 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+/** Nuovo id domanda per duplicato (mantiene ordine + casualità). */
+function genDuplicateQuestionId(index) {
+  return 'q_' + Date.now() + '_' + index + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Duplica configurazione form: domande, scoring, maggioranza, thank-you, tracking,
+ * Brevo (con fieldMappings aggiornati agli id domanda nuovi), automazioni (condizioni),
+ * logica salto (goTo), Meta Ads, pipeline stages, ecc. Non copia le risposte salvate.
+ */
+function duplicateFormDeep(form) {
+  if (!form || typeof form !== 'object') {
+    throw new Error('Form non valido');
+  }
+  const raw = JSON.parse(JSON.stringify(form));
+  const newFormId = genDuplicateFormId();
+  const questions = Array.isArray(raw.questions) ? raw.questions : [];
+  const idMap = {};
+  questions.forEach((q, index) => {
+    if (!q || typeof q !== 'object') return;
+    const oldId = q.id != null && String(q.id).trim() !== '' ? String(q.id) : '';
+    const newId = genDuplicateQuestionId(index);
+    if (oldId) idMap[oldId] = newId;
+  });
+  const newQuestions = questions.map((q, index) => {
+    if (!q || typeof q !== 'object') return q;
+    const oldId = q.id != null && String(q.id).trim() !== '' ? String(q.id) : '';
+    const newId = oldId && idMap[oldId] ? idMap[oldId] : genDuplicateQuestionId(index);
+    const next = { ...q, id: newId };
+    if (Array.isArray(next.logic)) {
+      next.logic = next.logic.map((rule) => {
+        if (!rule || typeof rule !== 'object') return rule;
+        const goTo = rule.goTo;
+        if (goTo && goTo !== 'end' && goTo !== 'redirect' && typeof goTo === 'string' && idMap[goTo]) {
+          return { ...rule, goTo: idMap[goTo] };
+        }
+        return { ...rule };
+      });
+    }
+    return next;
+  });
+  let brevoIntegration = raw.brevoIntegration;
+  if (brevoIntegration && typeof brevoIntegration === 'object') {
+    brevoIntegration = { ...brevoIntegration };
+    const fm = brevoIntegration.fieldMappings && typeof brevoIntegration.fieldMappings === 'object'
+      ? { ...brevoIntegration.fieldMappings }
+      : {};
+    const nextFm = {};
+    Object.keys(fm).forEach((oldQid) => {
+      const nk = idMap[oldQid];
+      if (nk) nextFm[nk] = fm[oldQid] && typeof fm[oldQid] === 'object' ? { ...fm[oldQid] } : fm[oldQid];
+    });
+    brevoIntegration.fieldMappings = nextFm;
+  }
+  let automations = raw.automations;
+  if (Array.isArray(automations)) {
+    automations = automations.map((auto) => {
+      if (!auto || typeof auto !== 'object') return auto;
+      const conditions = Array.isArray(auto.conditions)
+        ? auto.conditions.map((c) => {
+            if (!c || typeof c !== 'object') return c;
+            const qid = c.questionId != null ? String(c.questionId) : '';
+            if (qid && idMap[qid]) return { ...c, questionId: idMap[qid] };
+            return { ...c };
+          })
+        : auto.conditions;
+      const actions = Array.isArray(auto.actions) ? auto.actions.map((a) => (a && typeof a === 'object' ? { ...a } : a)) : auto.actions;
+      return { ...auto, conditions, actions };
+    });
+  }
+  const titleBase = String(raw.title || 'Form').trim();
+  const title = titleBase ? `${titleBase} (copia)` : 'Form (copia)';
+  return {
+    ...raw,
+    id: newFormId,
+    title,
+    questions: newQuestions,
+    brevoIntegration,
+    automations,
+  };
+}
+
 function getMajorityOutcomeBody(mp, winnerTag) {
   const o = mp?.outcomes?.[winnerTag];
   if (o && typeof o === 'object' && String(o.text || '').trim()) return String(o.text);
@@ -1083,6 +1170,41 @@ function App() {
     return Promise.resolve();
   }, [useApi, refreshForms]);
 
+  const duplicateForm = React.useCallback((form) => {
+    let next;
+    try {
+      next = duplicateFormDeep(form);
+    } catch (e) {
+      window.alert(e?.message || 'Impossibile duplicare il form.');
+      return;
+    }
+    if (useApi) {
+      fetch('/api/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(next),
+      })
+        .then((r) => {
+          if (!r.ok) return readFetchJsonBody(r).then((d) => Promise.reject(new Error(d?.error || 'Salvataggio duplicato non riuscito')));
+        })
+        .then(() => {
+          refreshForms();
+          setEditingFormId(next.id);
+          setView('builder');
+        })
+        .catch((err) => {
+          window.alert(err?.message || 'Errore durante la duplicazione.');
+        });
+      return;
+    }
+    const list = [...getFormsLocal(), next];
+    saveFormsLocal(list);
+    refreshForms();
+    setEditingFormId(next.id);
+    setView('builder');
+  }, [useApi, refreshForms]);
+
   const addResponseForForm = React.useCallback((formId, answers, quizScore, computedScore, majorityResult) => {
     if (useApi) {
       return fetch('/api/forms/' + encodeURIComponent(formId) + '/responses', {
@@ -1156,6 +1278,7 @@ function App() {
             useApi={useApi}
             onRefresh={refreshForms}
             onEdit={(id) => { setEditingFormId(id); setView('builder'); }}
+            onDuplicate={duplicateForm}
             onFill={(id) => { setFillingFormId(id); setView('fill'); }}
             onResults={(id) => { setResultsFormId(id); setView('results'); }}
             onDelete={(id) => {
@@ -1258,7 +1381,7 @@ function ThemeSelector({ theme, onTheme }) {
   );
 }
 
-function Dashboard({ forms, useApi, onRefresh, onEdit, onFill, onResults, onDelete }) {
+function Dashboard({ forms, useApi, onRefresh, onEdit, onDuplicate, onFill, onResults, onDelete }) {
   const [copyOk, setCopyOk] = React.useState(null);
 
   const handleNewForm = (formType = 'contact') => {
@@ -1340,6 +1463,14 @@ function Dashboard({ forms, useApi, onRefresh, onEdit, onFill, onResults, onDele
                     {copyOk === form.id ? '✓ Copiato!' : 'Link clienti'}
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => { if (onDuplicate) onDuplicate(form); }}
+                  title="Duplica form, domande, formule, Brevo, automazioni e logica"
+                >
+                  Duplica
+                </button>
                 <button className="btn-results" onClick={() => onResults(form.id)}>Risultati</button>
               </div>
             </div>
@@ -3754,6 +3885,8 @@ function CRMView({ forms, useApi }) {
   const [selectedContactKey, setSelectedContactKey] = React.useState(null);
   const [newListName, setNewListName] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [renamingListId, setRenamingListId] = React.useState(null);
+  const [renameDraft, setRenameDraft] = React.useState('');
 
   const refreshCrm = React.useCallback(() => {
     setLoading(true);
@@ -3787,6 +3920,17 @@ function CRMView({ forms, useApi }) {
   const selectedContact = contacts.find((c) => c.contactKey === selectedContactKey) || null;
   const listNameById = {};
   lists.forEach((l) => { listNameById[l.id] = l.name; });
+
+  const contactCountByListId = React.useMemo(() => {
+    const map = {};
+    lists.forEach((l) => { map[l.id] = 0; });
+    contacts.forEach((c) => {
+      (c.listIds || []).forEach((id) => {
+        if (Object.prototype.hasOwnProperty.call(map, id)) map[id] += 1;
+      });
+    });
+    return map;
+  }, [lists, contacts]);
 
   const filteredContacts = contacts.filter((c) => {
     if (selectedListId && !(c.listIds || []).includes(selectedListId)) return false;
@@ -3855,6 +3999,52 @@ function CRMView({ forms, useApi }) {
     refreshCrm();
   };
 
+  const startRenameList = (l) => {
+    setRenamingListId(l.id);
+    setRenameDraft(l.name || '');
+  };
+
+  const cancelRenameList = () => {
+    setRenamingListId(null);
+    setRenameDraft('');
+  };
+
+  const commitRenameList = () => {
+    if (!renamingListId) return;
+    const name = renameDraft.trim();
+    if (!name) {
+      cancelRenameList();
+      return;
+    }
+    const current = lists.find((l) => l.id === renamingListId);
+    if (current && String(current.name || '').trim() === name) {
+      cancelRenameList();
+      return;
+    }
+    if (useApi) {
+      fetch('/api/crm/lists/' + encodeURIComponent(renamingListId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+        .then((r) => {
+          if (r.ok) {
+            cancelRenameList();
+            refreshCrm();
+          }
+        });
+      return;
+    }
+    const crm = getCrmLocal();
+    const idx = (crm.lists || []).findIndex((l) => l.id === renamingListId);
+    if (idx >= 0) {
+      crm.lists[idx].name = name;
+      saveCrmLocal(crm);
+    }
+    cancelRenameList();
+    refreshCrm();
+  };
+
   const deleteContact = (contactKey) => {
     if (!contactKey) return;
     if (!window.confirm('Eliminare definitivamente questo contatto? Verranno rimosse tutte le compilazioni collegate (da tutti i form), le iscrizioni alle liste e i deal associati. Operazione irreversibile.')) return;
@@ -3891,7 +4081,14 @@ function CRMView({ forms, useApi }) {
             />
             <select className="crm-select" value={selectedListId} onChange={(e) => setSelectedListId(e.target.value)}>
               <option value="">Tutte le liste</option>
-              {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {lists.map((l) => {
+                const n = contactCountByListId[l.id] ?? 0;
+                return (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({n})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -3938,8 +4135,44 @@ function CRMView({ forms, useApi }) {
             <div className="crm-list-items">
               {lists.map((l) => (
                 <div key={l.id} className="crm-list-item">
-                  <span>{l.name}</span>
-                  <button type="button" className="btn-remove" onClick={() => deleteList(l.id)}>×</button>
+                  {renamingListId === l.id ? (
+                    <>
+                      <input
+                        type="text"
+                        className="crm-input crm-list-rename-input"
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitRenameList();
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelRenameList();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <div className="crm-list-item-controls">
+                        <button type="button" className="crm-btn-rename crm-btn-rename-primary" onClick={commitRenameList}>Salva</button>
+                        <button type="button" className="crm-btn-rename" onClick={cancelRenameList}>Annulla</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="crm-list-item-title">
+                        <span className="crm-list-item-name" title={l.name}>{l.name}</span>
+                        <span className="crm-list-count" title={`${contactCountByListId[l.id] ?? 0} contatti in questa lista`}>
+                          {contactCountByListId[l.id] ?? 0}
+                        </span>
+                      </div>
+                      <div className="crm-list-item-controls">
+                        <button type="button" className="crm-btn-rename" onClick={() => startRenameList(l)}>Rinomina</button>
+                        <button type="button" className="btn-remove" onClick={() => deleteList(l.id)}>×</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

@@ -436,9 +436,79 @@ html, body, #app {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.4rem 0.6rem;
+}
+
+.crm-list-item-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-list-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-list-count {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.crm-list-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.crm-list-item .crm-list-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.88rem;
+}
+
+.crm-btn-rename {
+  padding: 0.25rem 0.45rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font);
+}
+
+.crm-btn-rename:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.crm-btn-rename-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.crm-btn-rename-primary:hover {
+  background: rgba(99, 102, 241, 0.12);
 }
 
 .crm-muted {
