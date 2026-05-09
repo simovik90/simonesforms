@@ -71,6 +71,7 @@ const DEFAULT_FORM_BREVO_INTEGRATION = {
   listId: null,
   crmListId: null,
   listName: '',
+  crmListName: '',
   brevoFolderId: '',
   fieldMappings: {},
   syncComputedScore: true,
@@ -94,6 +95,7 @@ function normalizeBrevoIntegrationForLoad(raw) {
     fieldMappings: fm,
     listId: raw.listId != null && raw.listId !== '' ? Number(raw.listId) || raw.listId : null,
     crmListId: raw.crmListId != null && String(raw.crmListId).trim() !== '' ? String(raw.crmListId).trim() : null,
+    crmListName: raw.crmListName != null ? String(raw.crmListName).trim() : '',
     brevoFolderId: raw.brevoFolderId != null ? String(raw.brevoFolderId).trim() : '',
   };
 }
@@ -1761,7 +1763,7 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
     <div className="builder-props builder-brevo-panel">
       <h4 className="builder-settings-section-title">Brevo (Sendinblue)</h4>
       <p className="builder-props-help" style={{ marginTop: 0 }}>
-        Dopo ogni invio, il contatto va in Brevo (con attributi mappati) e, con la stessa logica (email obbligatoria), viene iscritto anche alla <strong>lista gemella nel CRM</strong>. Le liste Brevo + CRM si creano con <strong>Salva e chiudi</strong> (stesso nome = lista riusata). Scegli sotto la <strong>cartella Brevo</strong> dove creare nuove liste, oppure «Automatico» per lasciare decidere al server (<code>.env</code>, prima cartella o cartella «Liste questionari»).
+        Dopo ogni invio, il contatto va in Brevo (con attributi mappati) e, con la stessa logica (email obbligatoria), viene iscritto anche a una <strong>lista nel CRM</strong>. Le liste si creano con <strong>Salva e chiudi</strong> (stesso nome = lista riusata). Puoi usare un <strong>nome diverso</strong> per la lista CRM rispetto a Brevo (campo sotto). Scegli la <strong>cartella Brevo</strong> per le nuove liste Brevo, oppure «Automatico» (<code>.env</code>, prima cartella o «Liste questionari»).
       </p>
       {!useApi && (
         <p className="builder-brevo-warn">L’integrazione Brevo è attiva solo in modalità server (API): i dati locali nel browser non chiamano Brevo.</p>
@@ -1779,10 +1781,10 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
           disabled={disabledAll}
           onChange={(e) => patch({ enabled: e.target.checked })}
         />
-        Invia ogni risposta a Brevo e iscrivi alla lista CRM gemella (stessa email)
+        Invia ogni risposta a Brevo e iscrivi alla lista CRM indicata (stessa email)
       </label>
 
-      <label className="builder-props-label">Nome lista (Brevo e CRM)</label>
+      <label className="builder-props-label">Nome lista Brevo</label>
       <input
         type="text"
         className="builder-props-input"
@@ -1791,6 +1793,18 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
         onChange={(e) => patch({ listName: e.target.value })}
         placeholder="Es. Lead da questionario X"
       />
+      <label className="builder-props-label">Nome lista nel CRM (opzionale)</label>
+      <input
+        type="text"
+        className="builder-props-input"
+        disabled={disabledAll}
+        value={brevoIntegration.crmListName || ''}
+        onChange={(e) => patch({ crmListName: e.target.value })}
+        placeholder="Vuoto = stesso nome della lista Brevo"
+      />
+      <p className="builder-props-help" style={{ marginTop: '-0.25rem' }}>
+        Se compili questo campo, su <strong>Salva e chiudi</strong> il server crea o riusa nel CRM una lista con questo nome; su Brevo resta il nome indicato sopra.
+      </p>
       <label className="builder-props-label">ID lista Brevo manuale (prioritario)</label>
       <input
         type="text"
@@ -1852,7 +1866,14 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
         <p className="builder-props-help builder-brevo-list-linked">
           Brevo: ID <strong>{brevoIntegration.listId}</strong>
           {brevoIntegration.crmListId ? (
-            <> — CRM locale: <strong>{brevoIntegration.crmListId}</strong></>
+            <>
+              {' — CRM: '}
+              {brevoIntegration.crmListName ? (
+                <><strong>{brevoIntegration.crmListName}</strong> (id <strong>{brevoIntegration.crmListId}</strong>)</>
+              ) : (
+                <>id <strong>{brevoIntegration.crmListId}</strong></>
+              )}
+            </>
           ) : null}
         </p>
       )}
@@ -2166,12 +2187,14 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
     setSettingsModalSaveBusy(true);
     try {
       const folderRaw = String(brevoIntegration.brevoFolderId || '').trim();
+      const crmNameRaw = String(brevoIntegration.crmListName || '').trim();
       const r = await fetch('/api/brevo/lists/ensure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
           ...(folderRaw !== '' ? { folderId: folderRaw } : {}),
+          ...(crmNameRaw !== '' ? { crmName: crmNameRaw } : {}),
         }),
       });
       const data = await readFetchJsonBody(r);
@@ -2190,6 +2213,10 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
           listId: data.listId,
           crmListId: data.crmListId != null && String(data.crmListId).trim() !== '' ? String(data.crmListId).trim() : prev.crmListId,
           listName: data.listName || name,
+          crmListName:
+            crmNameRaw !== ''
+              ? String(data.crmListName || crmNameRaw).trim()
+              : '',
         })
       );
     } catch (e) {
@@ -2199,7 +2226,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
     }
     setSettingsModalSaveBusy(false);
     setQuestionnaireSettingsOpen(false);
-  }, [brevoIntegration.listName, brevoIntegration.brevoFolderId, brevoIntegration.listId, useApi]);
+  }, [brevoIntegration.listName, brevoIntegration.crmListName, brevoIntegration.brevoFolderId, brevoIntegration.listId, useApi]);
 
   React.useEffect(() => {
     if (existing) {
