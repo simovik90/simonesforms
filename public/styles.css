@@ -331,6 +331,30 @@ html, body, #app {
   gap: 1rem;
 }
 
+.system-settings-view {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 0.5rem 2rem;
+}
+
+.system-settings-view h2 {
+  margin-bottom: 0.35rem;
+}
+
+.system-settings-card {
+  margin-top: 1rem;
+}
+
+.system-settings-result {
+  margin-top: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
 .crm-header p {
   color: var(--text-muted);
   margin-top: 0.35rem;

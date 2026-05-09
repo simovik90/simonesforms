@@ -499,6 +499,82 @@ async function fetchAllBrevoFolders() {
   return out;
 }
 
+/** Elenco liste contatti Brevo (per menu import / sistema). */
+async function fetchAllBrevoListsForPicker() {
+  const out = [];
+  const limit = 50;
+  let offset = 0;
+  for (let page = 0; page < 200; page += 1) {
+    const data = await brevoApiRequest('GET', `/contacts/lists?limit=${limit}&offset=${offset}`);
+    const lists = data.lists || [];
+    for (const l of lists) {
+      if (l.id == null) continue;
+      const id = Number(l.id);
+      if (Number.isNaN(id) || id <= 0) continue;
+      out.push({ id, name: String(l.name != null ? l.name : '').trim() || `Lista ${id}` });
+    }
+    if (lists.length < limit) break;
+    offset += lists.length;
+  }
+  return out;
+}
+
+/**
+ * Legge tutti i contatti di una lista Brevo (paginato) e li iscrive alla lista CRM indicata (chiave email:...).
+ * Non crea risposte ai form; aggiorna solo memberships nel CRM.
+ */
+async function importBrevoListContactsIntoCrm(brevoListId, crmListId) {
+  const crmList = String(crmListId || '').trim();
+  const listNum = Number(brevoListId);
+  if (!crmList) throw new Error('Lista CRM richiesta');
+  if (Number.isNaN(listNum) || listNum <= 0) throw new Error('ID lista Brevo non valido');
+
+  const crm = readCrm();
+  if (!crm.lists.some((l) => l.id === crmList)) {
+    throw new Error('Lista CRM non trovata');
+  }
+
+  let added = 0;
+  let alreadyInList = 0;
+  let skippedNoEmail = 0;
+  let scannedFromBrevo = 0;
+  const limit = 500;
+  let offset = 0;
+
+  for (let page = 0; page < 500; page += 1) {
+    const pathWithQuery = `/contacts/lists/${listNum}/contacts?limit=${limit}&offset=${offset}`;
+    const data = await brevoApiRequest('GET', pathWithQuery);
+    const chunk = data.contacts || [];
+    scannedFromBrevo += chunk.length;
+
+    for (const c of chunk) {
+      const raw =
+        c.email != null
+          ? String(c.email).trim()
+          : (c.attributes && c.attributes.EMAIL != null ? String(c.attributes.EMAIL).trim() : '');
+      const emailLower = raw.toLowerCase();
+      if (!emailLower || !emailLower.includes('@')) {
+        skippedNoEmail += 1;
+        continue;
+      }
+      const key = `email:${emailLower}`;
+      if (!Array.isArray(crm.memberships[key])) crm.memberships[key] = [];
+      if (crm.memberships[key].includes(crmList)) {
+        alreadyInList += 1;
+        continue;
+      }
+      crm.memberships[key].push(crmList);
+      added += 1;
+    }
+
+    await writeCrm(crm);
+    if (chunk.length < limit) break;
+    offset += chunk.length;
+  }
+
+  return { added, alreadyInList, skippedNoEmail, scannedFromBrevo };
+}
+
 function parseOptionalBrevoFolderId(raw) {
   if (raw == null || String(raw).trim() === '') return null;
   const n = Number(String(raw).trim());
@@ -592,19 +668,14 @@ async function ensureBrevoAndCrmLists(displayName, options = {}) {
   };
 }
 
-async function syncResponseToBrevo(form, response) {
+/** Attributi Brevo solo dai field mapping (stesso sottoinsieme usato per ricavare l’email). */
+function buildBrevoMappingAttributes(form, response) {
   const bi = form?.brevoIntegration;
-  if (!bi?.enabled || bi.listId == null || bi.listId === '' || !process.env.BREVO_API_KEY) return;
-
-  const listId = Number(bi.listId);
-  if (Number.isNaN(listId)) return;
-
   const answers = response?.answers || {};
   const questions = form?.questions || [];
   const attributes = {};
-
   for (const q of questions) {
-    const map = bi.fieldMappings?.[q.id];
+    const map = bi?.fieldMappings?.[q.id];
     if (!map || !map.enabled) continue;
     const attr = brevoNormAttr(map.attributeName);
     if (!attr) continue;
@@ -612,14 +683,31 @@ async function syncResponseToBrevo(form, response) {
     if (val == null || val === '') continue;
     attributes[attr] = formatAnswerForBrevo(val);
   }
+  return attributes;
+}
 
+/** Email per Brevo e CRM gemello: prima attributo EMAIL mappato, poi euristica sulle risposte. */
+function getResponseEmailForIntegrations(form, response, attributes) {
+  const attrs = attributes != null ? attributes : buildBrevoMappingAttributes(form, response);
   let email = '';
-  const emailAttr = attributes.EMAIL;
+  const emailAttr = attrs.EMAIL;
   if (emailAttr && String(emailAttr).includes('@')) email = String(emailAttr).trim();
   if (!email) {
     const parsed = extractContactFromResponse(form, response);
     if (parsed?.email) email = String(parsed.email).trim();
   }
+  return email;
+}
+
+async function syncResponseToBrevo(form, response) {
+  const bi = form?.brevoIntegration;
+  if (!bi?.enabled || bi.listId == null || bi.listId === '' || !process.env.BREVO_API_KEY) return;
+
+  const listId = Number(bi.listId);
+  if (Number.isNaN(listId)) return;
+
+  const attributes = buildBrevoMappingAttributes(form, response);
+  const email = getResponseEmailForIntegrations(form, response, attributes);
   if (!email || !email.includes('@')) {
     console.warn('[Brevo] sync skipped: no email for response', response?.id);
     return;
@@ -647,6 +735,11 @@ async function syncResponseToBrevo(form, response) {
     attributes[k] = typeof qs === 'object' && qs != null && 'correct' in qs ? `${qs.correct}/${qs.total}` : String(qs);
   }
 
+  const utmVal = bi.utmValue != null ? String(bi.utmValue).trim() : '';
+  if (utmVal) {
+    attributes.UTM = utmVal;
+  }
+
   try {
     await brevoApiRequest('POST', '/contacts', {
       email,
@@ -663,15 +756,16 @@ async function syncResponseToBrevo(form, response) {
 async function syncResponseToCrmMirrorList(form, response) {
   const bi = form?.brevoIntegration;
   if (!bi?.enabled || !bi.crmListId) return;
-  const parsed = extractContactFromResponse(form, response);
-  if (!parsed?.email || !String(parsed.email).includes('@')) return;
+  const attributes = buildBrevoMappingAttributes(form, response);
+  const email = getResponseEmailForIntegrations(form, response, attributes);
+  if (!email || !String(email).includes('@')) return;
 
   const crm = readCrm();
   if (!crm.lists.some((l) => l.id === bi.crmListId)) {
     console.warn('[CRM] lista gemella non trovata:', bi.crmListId);
     return;
   }
-  const key = parsed.contactKey;
+  const key = `email:${email.toLowerCase()}`;
   if (!Array.isArray(crm.memberships[key])) crm.memberships[key] = [];
   if (!crm.memberships[key].includes(bi.crmListId)) crm.memberships[key].push(bi.crmListId);
   await writeCrm(crm);
@@ -707,6 +801,11 @@ function extractContactFromResponse(form, response) {
   let phone = '';
   let name = '';
   let company = '';
+
+  const mappedAttrs = buildBrevoMappingAttributes(form, response);
+  if (mappedAttrs.EMAIL && String(mappedAttrs.EMAIL).includes('@')) {
+    email = String(mappedAttrs.EMAIL).trim();
+  }
 
   for (const q of questions) {
     const raw = answers[q.id];
@@ -958,6 +1057,25 @@ app.get('/api/crm/contacts', (req, res) => {
   res.json(computeCrmContacts(forms, responses, crm));
 });
 
+app.post('/api/crm/import-from-brevo-list', async (req, res) => {
+  if (!process.env.BREVO_API_KEY || !String(process.env.BREVO_API_KEY).trim()) {
+    return res.status(503).json({ error: 'Brevo non configurato: imposta BREVO_API_KEY sul server' });
+  }
+  const brevoListId = req.body?.brevoListId;
+  const crmListId = req.body?.crmListId;
+  try {
+    const result = await importBrevoListContactsIntoCrm(brevoListId, crmListId);
+    res.json(result);
+  } catch (e) {
+    console.error('[CRM] import-from-brevo-list', e.message, e.detail || '');
+    res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 400).json({
+      error: e.message || 'Errore import',
+      code: e.detail && e.detail.code,
+      detail: e.detail,
+    });
+  }
+});
+
 /** Rimuove tutte le compilazioni che aggregano questo contatto, le iscrizioni alle liste e i deal collegati. */
 app.delete('/api/crm/contacts/:contactKey', async (req, res) => {
   const contactKey = decodeURIComponent(req.params.contactKey);
@@ -1153,6 +1271,23 @@ app.get('/api/brevo/folders', async (req, res) => {
     console.error('[Brevo] GET /contacts/folders', e.message, e.detail || '');
     res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
       error: e.message || 'Errore caricamento cartelle Brevo',
+      code: e.detail && e.detail.code,
+      detail: e.detail,
+    });
+  }
+});
+
+app.get('/api/brevo/lists', async (req, res) => {
+  if (!process.env.BREVO_API_KEY || !String(process.env.BREVO_API_KEY).trim()) {
+    return res.status(503).json({ error: 'Brevo non configurato: imposta BREVO_API_KEY sul server' });
+  }
+  try {
+    const lists = await fetchAllBrevoListsForPicker();
+    res.json({ lists });
+  } catch (e) {
+    console.error('[Brevo] GET /contacts/lists', e.message, e.detail || '');
+    res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({
+      error: e.message || 'Errore caricamento liste Brevo',
       code: e.detail && e.detail.code,
       detail: e.detail,
     });

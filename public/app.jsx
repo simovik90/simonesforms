@@ -80,6 +80,8 @@ const DEFAULT_FORM_BREVO_INTEGRATION = {
   majorityAttributeName: 'FORM_PROFILE',
   syncQuizScore: false,
   quizScoreAttributeName: 'QUIZ_SCORE',
+  /** Valore fisso per questionario, inviato a Brevo sull’attributo UTM (provenienza contatti). */
+  utmValue: '',
 };
 
 function normalizeBrevoIntegrationForLoad(raw) {
@@ -97,6 +99,7 @@ function normalizeBrevoIntegrationForLoad(raw) {
     crmListId: raw.crmListId != null && String(raw.crmListId).trim() !== '' ? String(raw.crmListId).trim() : null,
     crmListName: raw.crmListName != null ? String(raw.crmListName).trim() : '',
     brevoFolderId: raw.brevoFolderId != null ? String(raw.brevoFolderId).trim() : '',
+    utmValue: raw.utmValue != null ? String(raw.utmValue).trim() : '',
   };
 }
 
@@ -743,6 +746,28 @@ function saveCrmLocal(crm) {
   localStorage.setItem(STORAGE_CRM, JSON.stringify(crm));
 }
 
+function normBrevoAttrForContact(name) {
+  return String(name || '').trim().toUpperCase().replace(/\s+/g, '_');
+}
+
+/** Stessa logica attributi mappati del server (per EMAIL e contactKey allineati al CRM). */
+function buildBrevoMappingAttrsFromResponse(form, response) {
+  const bi = form?.brevoIntegration;
+  const answers = response?.answers || {};
+  const questions = form?.questions || [];
+  const attributes = {};
+  for (const q of questions) {
+    const map = bi?.fieldMappings?.[q.id];
+    if (!map || !map.enabled) continue;
+    const attr = normBrevoAttrForContact(map.attributeName);
+    if (!attr) continue;
+    const val = answers[q.id];
+    if (val == null || val === '') continue;
+    attributes[attr] = Array.isArray(val) ? val.map((x) => String(x)).join(', ') : String(val);
+  }
+  return attributes;
+}
+
 function extractContactFromSubmission(form, response) {
   const answers = response?.answers || {};
   const questions = form?.questions || [];
@@ -752,6 +777,10 @@ function extractContactFromSubmission(form, response) {
   let name = '';
   let phone = '';
   let company = '';
+  const mappedAttrs = buildBrevoMappingAttrsFromResponse(form, response);
+  if (mappedAttrs.EMAIL && String(mappedAttrs.EMAIL).includes('@')) {
+    email = String(mappedAttrs.EMAIL).trim();
+  }
   questions.forEach((q) => {
     const raw = answers[q.id];
     if (raw == null || String(raw).trim() === '') return;
@@ -1263,6 +1292,12 @@ function App() {
             Meta Ads
           </button>
           <button
+            className={view === 'system' ? 'active' : ''}
+            onClick={() => { setView('system'); setEditingFormId(null); setFillingFormId(null); setResultsFormId(null); }}
+          >
+            Sistema
+          </button>
+          <button
             className={view === 'builder' ? 'active' : ''}
             onClick={() => { setView('builder'); setEditingFormId(null); }}
           >
@@ -1329,6 +1364,9 @@ function App() {
             useApi={useApi}
             onBack={() => { setView('dashboard'); setResultsFormId(null); }}
           />
+        )}
+        {view === 'system' && (
+          <SystemSettingsView useApi={useApi} />
         )}
         {view === 'crm' && (
           <CRMView
@@ -1822,6 +1860,19 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
         onChange={(e) => patch({ listName: e.target.value })}
         placeholder="Es. Lead da questionario X"
       />
+      <label className="builder-props-label">UTM / provenienza (Brevo)</label>
+      <input
+        type="text"
+        className="builder-props-input"
+        disabled={disabledAll}
+        value={brevoIntegration.utmValue || ''}
+        onChange={(e) => patch({ utmValue: e.target.value })}
+        placeholder="Es. quiz_tiktok, meta_ads_maggio"
+      />
+      <p className="builder-props-help" style={{ marginTop: '-0.25rem' }}>
+        Opzionale. Se compilato, ogni contatto avrà questo valore nell’attributo contatto <strong>UTM</strong> su Brevo
+        (crea l’attributo di tipo testo «UTM» in Brevo → Contatti → Impostazioni se non esiste). Utile per capire da quale questionario o campagna arriva il lead quando usi più liste o un’unica lista.
+      </p>
       <div className="builder-brevo-folder-row">
         <label className="builder-props-label" style={{ marginTop: 0 }}>Lista nel CRM</label>
         <button
@@ -3955,6 +4006,145 @@ function MetaAdsView({ forms, useApi, saveForm }) {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function SystemSettingsView({ useApi }) {
+  const [brevoOk, setBrevoOk] = React.useState(null);
+  const [brevoLists, setBrevoLists] = React.useState([]);
+  const [crmLists, setCrmLists] = React.useState([]);
+  const [brevoListId, setBrevoListId] = React.useState('');
+  const [manualBrevoId, setManualBrevoId] = React.useState('');
+  const [crmListId, setCrmListId] = React.useState('');
+  const [listsLoading, setListsLoading] = React.useState(true);
+  const [syncBusy, setSyncBusy] = React.useState(false);
+  const [resultMsg, setResultMsg] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    if (!useApi) {
+      setListsLoading(false);
+      setBrevoOk(false);
+      return;
+    }
+    setListsLoading(true);
+    setResultMsg(null);
+    Promise.all([
+      fetch('/api/brevo/status')
+        .then((r) => r.json())
+        .then((st) => { setBrevoOk(Boolean(st.configured)); })
+        .catch(() => { setBrevoOk(false); }),
+      fetch('/api/brevo/lists')
+        .then(readFetchJsonBody)
+        .then((bl) => { setBrevoLists(Array.isArray(bl.lists) ? bl.lists : []); })
+        .catch(() => { setBrevoLists([]); }),
+      fetch('/api/crm/lists')
+        .then((r) => r.json())
+        .then((cl) => { setCrmLists(Array.isArray(cl) ? cl : []); })
+        .catch(() => { setCrmLists([]); }),
+    ]).finally(() => { setListsLoading(false); });
+  }, [useApi]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  const runSync = () => {
+    const idRaw = String(manualBrevoId || '').trim() !== '' ? String(manualBrevoId).trim() : String(brevoListId || '').trim();
+    const n = Number(idRaw);
+    if (!idRaw || Number.isNaN(n) || n <= 0) {
+      window.alert('Seleziona una lista Brevo dal menu oppure inserisci un ID numerico valido.');
+      return;
+    }
+    if (!crmListId) {
+      window.alert('Seleziona la lista CRM di destinazione.');
+      return;
+    }
+    if (!window.confirm('Importare tutti i contatti della lista Brevo nella lista CRM selezionata? Le email già iscritte a quella lista CRM verranno saltate.')) return;
+    setSyncBusy(true);
+    setResultMsg(null);
+    fetch('/api/crm/import-from-brevo-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ brevoListId: n, crmListId }),
+    })
+      .then(async (r) => {
+        const d = await readFetchJsonBody(r);
+        if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+        setResultMsg(
+          `Sincronizzazione completata: ${d.added} nuove iscrizioni alla lista CRM; già presenti: ${d.alreadyInList}; senza email valida: ${d.skippedNoEmail}; contatti letti da Brevo: ${d.scannedFromBrevo}.`,
+        );
+      })
+      .catch((e) => window.alert(e.message || 'Errore'))
+      .finally(() => setSyncBusy(false));
+  };
+
+  return (
+    <div className="system-settings-view">
+      <h2>Impostazioni di sistema</h2>
+      <p className="crm-muted" style={{ marginTop: 0 }}>
+        Strumenti di amministrazione sul server (Brevo e CRM locale).
+      </p>
+
+      <section className="crm-lists-box system-settings-card">
+        <h3>Import da Brevo al CRM</h3>
+        {!useApi && (
+          <p className="builder-brevo-warn">Disponibile solo con backend attivo e sessione autenticata.</p>
+        )}
+        {useApi && listsLoading && <p className="crm-muted">Caricamento elenchi…</p>}
+        {useApi && !listsLoading && brevoOk === false && (
+          <p className="builder-brevo-warn">Brevo non configurato sul server: imposta <code>BREVO_API_KEY</code> nel file d’ambiente e riavvia.</p>
+        )}
+        {useApi && !listsLoading && brevoOk && (
+          <>
+            <label className="builder-props-label">Lista Brevo (origine)</label>
+            <select
+              className="builder-props-select"
+              value={brevoListId}
+              onChange={(e) => setBrevoListId(e.target.value)}
+            >
+              <option value="">— Seleziona —</option>
+              {brevoLists.map((l) => (
+                <option key={l.id} value={String(l.id)}>{l.name} (ID {l.id})</option>
+              ))}
+            </select>
+            <label className="builder-props-label" style={{ marginTop: '0.75rem' }}>Oppure ID lista Brevo manuale</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="builder-props-input"
+              placeholder="Es. 58 (se compilato ha priorità sul menu)"
+              value={manualBrevoId}
+              onChange={(e) => setManualBrevoId(e.target.value)}
+            />
+            <label className="builder-props-label" style={{ marginTop: '0.75rem' }}>Lista CRM (destinazione)</label>
+            <select
+              className="builder-props-select"
+              value={crmListId}
+              onChange={(e) => setCrmListId(e.target.value)}
+            >
+              <option value="">— Seleziona —</option>
+              {crmLists.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+            <p className="builder-props-help" style={{ marginTop: '0.5rem' }}>
+              Il server legge tutte le email dalla lista Brevo (API paginata) e le iscrive alla lista CRM scelta.
+              Non crea né modifica le risposte salvate nei questionari.
+            </p>
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" className="btn-primary" onClick={runSync} disabled={syncBusy}>
+                {syncBusy ? 'Sincronizzazione…' : 'Sincronizza ora'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={load} disabled={listsLoading || syncBusy}>
+                Aggiorna elenchi
+              </button>
+            </div>
+            {resultMsg ? <p className="system-settings-result">{resultMsg}</p> : null}
+          </>
+        )}
+      </section>
     </div>
   );
 }
