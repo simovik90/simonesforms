@@ -562,9 +562,22 @@ async function ensureBrevoListByName(displayName, explicitFolderId) {
 async function ensureBrevoAndCrmLists(displayName, options = {}) {
   const brevoName = String(displayName || '').trim();
   if (!brevoName) throw new Error('Nome lista richiesto');
-  const crmExplicit = String(options.crmName != null ? options.crmName : '').trim();
-  const crmName = crmExplicit || brevoName;
-  const crm = await ensureCrmListByName(crmName);
+  const crmById = String(options.crmListId != null ? options.crmListId : '').trim();
+
+  let crm;
+  if (crmById) {
+    const data = readCrm();
+    const found = (data.lists || []).find((l) => l.id === crmById);
+    if (!found) {
+      throw new Error('Lista CRM non trovata: aggiorna l’elenco nel questionario o scegli un’altra lista');
+    }
+    crm = { id: found.id, name: found.name, created: false };
+  } else {
+    const crmExplicit = String(options.crmName != null ? options.crmName : '').trim();
+    const crmName = crmExplicit || brevoName;
+    crm = await ensureCrmListByName(crmName);
+  }
+
   if (!process.env.BREVO_API_KEY || !String(process.env.BREVO_API_KEY).trim()) {
     throw new Error('Brevo non configurato: imposta BREVO_API_KEY sul server');
   }
@@ -1150,10 +1163,13 @@ app.post('/api/brevo/lists/ensure', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome lista richiesto' });
   const folderId = req.body?.folderId;
+  const crmListIdBody = req.body?.crmListId;
+  const crmListIdOpt = crmListIdBody != null && String(crmListIdBody).trim() !== '' ? String(crmListIdBody).trim() : undefined;
   const crmNameRaw = req.body?.crmName;
-  const crmName = crmNameRaw != null && String(crmNameRaw).trim() !== '' ? String(crmNameRaw).trim() : undefined;
+  const crmName =
+    !crmListIdOpt && crmNameRaw != null && String(crmNameRaw).trim() !== '' ? String(crmNameRaw).trim() : undefined;
   try {
-    const result = await ensureBrevoAndCrmLists(name, { folderId, crmName });
+    const result = await ensureBrevoAndCrmLists(name, { folderId, crmName, crmListId: crmListIdOpt });
     res.json({
       listId: result.listId,
       crmListId: result.crmListId,
@@ -1176,10 +1192,13 @@ app.post('/api/brevo/lists', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome lista richiesto' });
   const folderId = req.body?.folderId;
+  const crmListIdBody = req.body?.crmListId;
+  const crmListIdOpt = crmListIdBody != null && String(crmListIdBody).trim() !== '' ? String(crmListIdBody).trim() : undefined;
   const crmNameRaw = req.body?.crmName;
-  const crmName = crmNameRaw != null && String(crmNameRaw).trim() !== '' ? String(crmNameRaw).trim() : undefined;
+  const crmName =
+    !crmListIdOpt && crmNameRaw != null && String(crmNameRaw).trim() !== '' ? String(crmNameRaw).trim() : undefined;
   try {
-    const result = await ensureBrevoAndCrmLists(name, { folderId, crmName });
+    const result = await ensureBrevoAndCrmLists(name, { folderId, crmName, crmListId: crmListIdOpt });
     res.status(201).json({
       id: result.listId,
       name: result.listName,

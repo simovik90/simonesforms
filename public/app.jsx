@@ -1701,6 +1701,8 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
   const [brevoFolders, setBrevoFolders] = React.useState([]);
   const [brevoFoldersLoading, setBrevoFoldersLoading] = React.useState(false);
   const [brevoFoldersErr, setBrevoFoldersErr] = React.useState(null);
+  const [crmLists, setCrmLists] = React.useState([]);
+  const [crmListsLoading, setCrmListsLoading] = React.useState(false);
 
   React.useEffect(() => {
     if (!useApi) {
@@ -1738,10 +1740,34 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
       .finally(() => setBrevoFoldersLoading(false));
   }, []);
 
+  const loadCrmLists = React.useCallback(() => {
+    if (!useApi) {
+      setCrmLists([]);
+      return;
+    }
+    setCrmListsLoading(true);
+    fetch('/api/crm/lists')
+      .then(async (r) => {
+        const d = await readFetchJsonBody(r);
+        if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+        setCrmLists(Array.isArray(d) ? d : []);
+      })
+      .catch(() => setCrmLists([]))
+      .finally(() => setCrmListsLoading(false));
+  }, [useApi]);
+
   React.useEffect(() => {
     if (!useApi || status.loading || !status.configured) return;
     loadBrevoFolders();
   }, [useApi, status.loading, status.configured, loadBrevoFolders]);
+
+  React.useEffect(() => {
+    if (!useApi) {
+      setCrmLists([]);
+      return;
+    }
+    loadCrmLists();
+  }, [useApi, loadCrmLists]);
 
   const patch = (partial) => onChange({ ...brevoIntegration, ...partial });
 
@@ -1758,12 +1784,15 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
   const disabledAll = !useApi || !status.configured;
   const selectedFolderId = String(brevoIntegration.brevoFolderId || '').trim();
   const showSavedFolderFallback = selectedFolderId !== '' && !brevoFolders.some((f) => String(f.id) === selectedFolderId);
+  const selectedCrmListId = String(brevoIntegration.crmListId || '').trim();
+  const showSavedCrmFallback =
+    selectedCrmListId !== '' && !crmLists.some((l) => l.id === selectedCrmListId);
 
   return (
     <div className="builder-props builder-brevo-panel">
       <h4 className="builder-settings-section-title">Brevo (Sendinblue)</h4>
       <p className="builder-props-help" style={{ marginTop: 0 }}>
-        Dopo ogni invio, il contatto va in Brevo (con attributi mappati) e, con la stessa logica (email obbligatoria), viene iscritto anche a una <strong>lista nel CRM</strong>. Le liste si creano con <strong>Salva e chiudi</strong> (stesso nome = lista riusata). Puoi usare un <strong>nome diverso</strong> per la lista CRM rispetto a Brevo (campo sotto). Scegli la <strong>cartella Brevo</strong> per le nuove liste Brevo, oppure «Automatico» (<code>.env</code>, prima cartella o «Liste questionari»).
+        Dopo ogni invio, il contatto va in Brevo (con attributi mappati) e, con la stessa logica (email obbligatoria), viene iscritto anche a una <strong>lista nel CRM</strong>. Con <strong>Salva e chiudi</strong> allinei le liste Brevo/CRM: puoi scegliere una <strong>lista CRM già esistente</strong> dal menu sotto, oppure lasciare l’opzione predefinita per creare o riusare nel CRM una lista con lo <strong>stesso nome</strong> della lista Brevo. Cartella Brevo per le nuove liste: menu sotto o «Automatico» (<code>.env</code>).
       </p>
       {!useApi && (
         <p className="builder-brevo-warn">L’integrazione Brevo è attiva solo in modalità server (API): i dati locali nel browser non chiamano Brevo.</p>
@@ -1793,17 +1822,46 @@ function FormBrevoPanel({ questions, brevoIntegration, onChange, useApi }) {
         onChange={(e) => patch({ listName: e.target.value })}
         placeholder="Es. Lead da questionario X"
       />
-      <label className="builder-props-label">Nome lista nel CRM (opzionale)</label>
-      <input
-        type="text"
-        className="builder-props-input"
-        disabled={disabledAll}
-        value={brevoIntegration.crmListName || ''}
-        onChange={(e) => patch({ crmListName: e.target.value })}
-        placeholder="Vuoto = stesso nome della lista Brevo"
-      />
+      <div className="builder-brevo-folder-row">
+        <label className="builder-props-label" style={{ marginTop: 0 }}>Lista nel CRM</label>
+        <button
+          type="button"
+          className="builder-brevo-refresh-folders"
+          disabled={!useApi || crmListsLoading}
+          onClick={loadCrmLists}
+        >
+          {crmListsLoading ? 'Carico…' : 'Aggiorna elenco'}
+        </button>
+      </div>
+      <select
+        className="builder-props-select"
+        disabled={disabledAll || crmListsLoading}
+        value={selectedCrmListId || ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) {
+            patch({ crmListId: null, crmListName: '' });
+            return;
+          }
+          const fromList = crmLists.find((l) => l.id === v);
+          patch({
+            crmListId: v,
+            crmListName: fromList ? String(fromList.name || '') : String(brevoIntegration.crmListName || ''),
+          });
+        }}
+      >
+        <option value="">Stesso nome della lista Brevo (crea o riusa al salvataggio)</option>
+        {crmLists.map((l) => (
+          <option key={l.id} value={l.id}>{l.name}</option>
+        ))}
+        {showSavedCrmFallback && (
+          <option value={selectedCrmListId}>
+            {brevoIntegration.crmListName ? `${brevoIntegration.crmListName} — ` : ''}id salvato {selectedCrmListId}
+          </option>
+        )}
+      </select>
       <p className="builder-props-help" style={{ marginTop: '-0.25rem' }}>
-        Se compili questo campo, su <strong>Salva e chiudi</strong> il server crea o riusa nel CRM una lista con questo nome; su Brevo resta il nome indicato sopra.
+        Le liste sono quelle del CRM (sezione CRM dell’app). Con un’opzione specifica, su <strong>Salva e chiudi</strong> il contatto viene iscritto a quella lista; su Brevo vale comunque il nome / ID lista indicati sopra.
       </p>
       <label className="builder-props-label">ID lista Brevo manuale (prioritario)</label>
       <input
@@ -2187,14 +2245,14 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
     setSettingsModalSaveBusy(true);
     try {
       const folderRaw = String(brevoIntegration.brevoFolderId || '').trim();
-      const crmNameRaw = String(brevoIntegration.crmListName || '').trim();
+      const pickedCrmId = String(brevoIntegration.crmListId || '').trim();
       const r = await fetch('/api/brevo/lists/ensure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
           ...(folderRaw !== '' ? { folderId: folderRaw } : {}),
-          ...(crmNameRaw !== '' ? { crmName: crmNameRaw } : {}),
+          ...(pickedCrmId !== '' ? { crmListId: pickedCrmId } : {}),
         }),
       });
       const data = await readFetchJsonBody(r);
@@ -2213,10 +2271,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
           listId: data.listId,
           crmListId: data.crmListId != null && String(data.crmListId).trim() !== '' ? String(data.crmListId).trim() : prev.crmListId,
           listName: data.listName || name,
-          crmListName:
-            crmNameRaw !== ''
-              ? String(data.crmListName || crmNameRaw).trim()
-              : '',
+          crmListName: String(data.crmListName || '').trim(),
         })
       );
     } catch (e) {
@@ -2226,7 +2281,7 @@ function Builder({ formId, forms, useApi, saveForm, onSave, onBack }) {
     }
     setSettingsModalSaveBusy(false);
     setQuestionnaireSettingsOpen(false);
-  }, [brevoIntegration.listName, brevoIntegration.crmListName, brevoIntegration.brevoFolderId, brevoIntegration.listId, useApi]);
+  }, [brevoIntegration.listName, brevoIntegration.crmListId, brevoIntegration.brevoFolderId, brevoIntegration.listId, useApi]);
 
   React.useEffect(() => {
     if (existing) {
