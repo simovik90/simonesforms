@@ -857,6 +857,26 @@ function buildCrmContacts(forms, responsesByForm, crm) {
     });
   });
   const memberships = crm?.memberships || {};
+  Object.keys(memberships).forEach((contactKey) => {
+    if (byKey[contactKey]) return;
+    let email = null;
+    if (contactKey.startsWith('email:')) {
+      email = contactKey.slice('email:'.length);
+    }
+    byKey[contactKey] = {
+      contactKey,
+      email,
+      name: null,
+      phone: null,
+      company: null,
+      firstSeen: null,
+      lastSeen: null,
+      submissionsCount: 0,
+      forms: {},
+      _majLabelAt: null,
+      majorityLabel: null,
+    };
+  });
   return Object.values(byKey)
     .map((c) => {
       const { _majLabelAt, ...rest } = c;

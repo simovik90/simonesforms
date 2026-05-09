@@ -523,6 +523,20 @@ async function fetchAllBrevoListsForPicker() {
  * Legge tutti i contatti di una lista Brevo (paginato) e li iscrive alla lista CRM indicata (chiave email:...).
  * Non crea risposte ai form; aggiorna solo memberships nel CRM.
  */
+function emailFromBrevoContact(c) {
+  if (!c || typeof c !== 'object') return '';
+  if (c.email != null && String(c.email).includes('@')) return String(c.email).trim();
+  const attrs = c.attributes && typeof c.attributes === 'object' ? c.attributes : {};
+  const tryKeys = ['EMAIL', 'email', 'Email', 'e_mail', 'E_MAIL'];
+  for (const k of tryKeys) {
+    if (attrs[k] != null && String(attrs[k]).includes('@')) return String(attrs[k]).trim();
+  }
+  for (const v of Object.values(attrs)) {
+    if (v != null && String(v).includes('@')) return String(v).trim();
+  }
+  return '';
+}
+
 async function importBrevoListContactsIntoCrm(brevoListId, crmListId) {
   const crmList = String(crmListId || '').trim();
   const listNum = Number(brevoListId);
@@ -544,14 +558,13 @@ async function importBrevoListContactsIntoCrm(brevoListId, crmListId) {
   for (let page = 0; page < 500; page += 1) {
     const pathWithQuery = `/contacts/lists/${listNum}/contacts?limit=${limit}&offset=${offset}`;
     const data = await brevoApiRequest('GET', pathWithQuery);
-    const chunk = data.contacts || [];
+    const chunk = Array.isArray(data.contacts)
+      ? data.contacts
+      : (Array.isArray(data) ? data : []);
     scannedFromBrevo += chunk.length;
 
     for (const c of chunk) {
-      const raw =
-        c.email != null
-          ? String(c.email).trim()
-          : (c.attributes && c.attributes.EMAIL != null ? String(c.attributes.EMAIL).trim() : '');
+      const raw = emailFromBrevoContact(c);
       const emailLower = raw.toLowerCase();
       if (!emailLower || !emailLower.includes('@')) {
         skippedNoEmail += 1;
@@ -895,6 +908,28 @@ function computeCrmContacts(forms, responses, crm) {
       if (parsed.date && (!prev.firstSeen || parsed.date < prev.firstSeen)) prev.firstSeen = parsed.date;
       byKey[parsed.contactKey] = prev;
     });
+  });
+
+  Object.keys(memberships).forEach((contactKey) => {
+    if (byKey[contactKey]) return;
+    let email = null;
+    if (contactKey.startsWith('email:')) {
+      email = contactKey.slice('email:'.length);
+    }
+    byKey[contactKey] = {
+      contactKey,
+      email,
+      name: null,
+      phone: null,
+      company: null,
+      firstSeen: null,
+      lastSeen: null,
+      formsCount: 0,
+      submissionsCount: 0,
+      forms: {},
+      _majLabelAt: null,
+      majorityLabel: null,
+    };
   });
 
   return Object.values(byKey).map((c) => {
