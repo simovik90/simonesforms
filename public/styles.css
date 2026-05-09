@@ -420,6 +420,24 @@ html, body, #app {
   gap: 1rem;
 }
 
+.crm-list-dropdown-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.crm-list-dropdown {
+  margin-bottom: 0.5rem;
+}
+
+.crm-list-dropdown-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+}
+
 .crm-list-create {
   display: flex;
   gap: 0.4rem;

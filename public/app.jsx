@@ -4106,17 +4106,6 @@ function CRMView({ forms, useApi }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <select className="crm-select" value={selectedListId} onChange={(e) => setSelectedListId(e.target.value)}>
-              <option value="">Tutte le liste</option>
-              {lists.map((l) => {
-                const n = contactCountByListId[l.id] ?? 0;
-                return (
-                  <option key={l.id} value={l.id}>
-                    {l.name} ({n})
-                  </option>
-                );
-              })}
-            </select>
           </div>
 
           {loading ? (
@@ -4149,6 +4138,26 @@ function CRMView({ forms, useApi }) {
         <aside className="crm-side-panel">
           <div className="crm-lists-box">
             <h3>Liste</h3>
+            <label className="crm-list-dropdown-label" htmlFor="crm-list-filter-select">Mostra contatti della lista</label>
+            <select
+              id="crm-list-filter-select"
+              className="crm-select crm-list-dropdown"
+              value={selectedListId}
+              onChange={(e) => setSelectedListId(e.target.value)}
+            >
+              <option value="">Tutte le liste</option>
+              {lists.map((l) => {
+                const n = contactCountByListId[l.id] ?? 0;
+                return (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({n})
+                  </option>
+                );
+              })}
+            </select>
+            {lists.length === 0 && !loading && (
+              <p className="crm-muted crm-list-dropdown-hint">Nessuna lista ancora: creane una sotto.</p>
+            )}
             <div className="crm-list-create">
               <input
                 type="text"
