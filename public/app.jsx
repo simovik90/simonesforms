@@ -416,6 +416,14 @@ function fireSlidePixel(url) {
   }
 }
 
+/** Pixel / script di conversione: prima beacon (init+event nello snippet), poi esecuzione fbq nel contesto pagina (dopo init globale). */
+function fireTrackingSnippetOrBeacon(snippet) {
+  const raw = String(snippet || '').trim();
+  if (!raw) return false;
+  if (fireSlidePixel(raw)) return true;
+  return runScriptSnippet(raw);
+}
+
 function runScriptSnippet(rawSnippet) {
   const code = String(rawSnippet || '')
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -2216,7 +2224,7 @@ function QuestionnaireSettingsModal({
                 Attiva una sola volta per compilazione
               </label>
               <p className="builder-props-help">
-                Il pixel parte quando viene mostrata la thank-you page (non in anteprima builder).
+                Il pixel parte quando viene mostrata la <strong>slide intermedia di esito</strong> (se attiva) oppure la thank-you page — stesso snippet, una sola volta se «Esegui una sola volta» è attivo (non in anteprima builder). Puoi usare solo <code>fbq('track','Lead')</code> se lo snippet globale ha già fatto <code>init</code>.
               </p>
             </div>
           </section>
@@ -2861,7 +2869,7 @@ function QuestionPropertiesPanel({ question, allQuestions, onUpdate, onRemove })
         rows={4}
       />
       <p className="builder-props-help">
-        Esegue questo snippet quando clicchi il bottone di questa slide durante la compilazione reale.
+        Esegue questo snippet quando clicchi il bottone di questa slide durante la compilazione reale. Se usi solo <code>fbq('track','Lead')</code>, serve che lo snippet globale abbia già caricato il pixel (<code>init</code>); in caso contrario incolla nello snippet anche <code>init</code> + evento o l’URL <code>facebook.com/tr?id=…&ev=Lead</code>.
       </p>
       {isChoice && (
         <>
@@ -3415,15 +3423,15 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   }, [previewMode, step, trackingScripts.globalSnippet, trackingScripts.firstSlideScript, form?.id]);
 
   React.useEffect(() => {
-    if (previewMode || !showThankYou) return;
+    if (previewMode || (!showThankYou && !showOutcomeSlide)) return;
     const pixel = String(thankYouPage.pixelSnippet || '').trim();
     if (!pixel) return;
     const fireOnce = thankYouPage.pixelFireOnce !== false;
     const key = `${form?.id || 'form'}:thankyou:${pixel}`;
     if (fireOnce && firedSlidePixelsRef.current.has(key)) return;
-    const fired = fireSlidePixel(pixel);
+    const fired = fireTrackingSnippetOrBeacon(pixel);
     if (fired && fireOnce) firedSlidePixelsRef.current.add(key);
-  }, [previewMode, showThankYou, thankYouPage.pixelSnippet, thankYouPage.pixelFireOnce, form?.id]);
+  }, [previewMode, showThankYou, showOutcomeSlide, thankYouPage.pixelSnippet, thankYouPage.pixelFireOnce, form?.id]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((a) => ({ ...a, [questionId]: value }));
@@ -3445,7 +3453,15 @@ function FillView({ form, onClose, onSubmit, onAddResponse, previewMode }) {
   const goNext = () => {
     if (!current) return;
     if (!previewMode) {
-      runScriptSnippet(current.slideButtonScript);
+      const slideScript = String(current.slideButtonScript || '').trim();
+      if (slideScript) {
+        const ok = fireTrackingSnippetOrBeacon(slideScript);
+        if (!ok) {
+          setTimeout(() => {
+            fireTrackingSnippetOrBeacon(slideScript);
+          }, 400);
+        }
+      }
     }
     const result = getNextStepResult(questions, currentIndex, current, answers[current.id]);
     if (result.kind === 'redirect') {
@@ -3811,10 +3827,13 @@ function MetaAdsView({ forms, useApi, saveForm }) {
         (data?.data || []).forEach((row) => {
           const campaignId = String(row.campaign_id || '').trim();
           if (!campaignId) return;
-          if (!aggregate[campaignId]) aggregate[campaignId] = { spend: 0, clicks: 0, impressions: 0 };
+          if (!aggregate[campaignId]) {
+            aggregate[campaignId] = { spend: 0, clicks: 0, impressions: 0, inlineLinkClicks: 0 };
+          }
           aggregate[campaignId].spend += Number(row.spend || 0);
           aggregate[campaignId].clicks += Number(row.clicks || 0);
           aggregate[campaignId].impressions += Number(row.impressions || 0);
+          aggregate[campaignId].inlineLinkClicks += Number(row.inline_link_clicks || 0);
         });
         insightsByAccountCampaign[accountId] = aggregate;
       }));
@@ -3823,20 +3842,24 @@ function MetaAdsView({ forms, useApi, saveForm }) {
       const untilMs = new Date(until + 'T23:59:59').getTime();
       const rows = configuredForms.map((form) => {
         const cfg = form.metaAds || {};
-        const stats = { spend: 0, clicks: 0, impressions: 0 };
+        const stats = { spend: 0, clicks: 0, impressions: 0, inlineLinkClicks: 0 };
         (cfg.campaignIds || []).forEach((cid) => {
           const row = insightsByAccountCampaign[cfg.accountId]?.[cid];
           if (!row) return;
           stats.spend += row.spend;
           stats.clicks += row.clicks;
           stats.impressions += row.impressions;
+          stats.inlineLinkClicks += row.inlineLinkClicks || 0;
         });
         const responsesCount = (responsesByForm[form.id] || []).reduce((acc, response) => {
           const ts = new Date(String(response?.date || '')).getTime();
           if (!Number.isFinite(ts)) return acc;
           return (ts >= sinceMs && ts <= untilMs) ? acc + 1 : acc;
         }, 0);
-        const cpc = stats.clicks > 0 ? stats.spend / stats.clicks : null;
+        /** CPC allineato a Meta Ads: costo per click su link (inline_link_clicks); se assenti, spesa / tutti i click. */
+        const cpc = stats.inlineLinkClicks > 0
+          ? stats.spend / stats.inlineLinkClicks
+          : (stats.clicks > 0 ? stats.spend / stats.clicks : null);
         const cpl = responsesCount > 0 ? stats.spend / responsesCount : null;
         return {
           formId: form.id,
@@ -3845,6 +3868,7 @@ function MetaAdsView({ forms, useApi, saveForm }) {
           campaignCount: (cfg.campaignIds || []).length,
           spend: stats.spend,
           clicks: stats.clicks,
+          inlineLinkClicks: stats.inlineLinkClicks,
           impressions: stats.impressions,
           responsesCount,
           cpc,
@@ -3866,7 +3890,8 @@ function MetaAdsView({ forms, useApi, saveForm }) {
       <div style={{ marginBottom: '1rem' }}>
         <h2 style={{ marginBottom: '0.35rem' }}>Meta Ads KPI</h2>
         <p style={{ color: 'var(--text-muted)' }}>
-          Associa campagne ai questionari e calcola KPI utili (spesa, click, CPC, CPL) sul periodo scelto.
+          Associa campagne ai questionari e calcola KPI sul periodo scelto. Il <strong>CPC</strong> usa i dati Meta{' '}
+          <code>inline_link_clicks</code> (come in Ads Manager: spesa ÷ click su link); se non disponibili, spesa ÷ tutti i click.
         </p>
       </div>
 
@@ -3999,6 +4024,7 @@ function MetaAdsView({ forms, useApi, saveForm }) {
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Campagne</th>
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Spesa</th>
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Click</th>
+                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Click link</th>
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Impression</th>
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>Lead (invii)</th>
                       <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>CPC</th>
@@ -4013,6 +4039,7 @@ function MetaAdsView({ forms, useApi, saveForm }) {
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.campaignCount)}</td>
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatMoneyEUR(row.spend)}</td>
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.clicks)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.inlineLinkClicks || 0)}</td>
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.impressions)}</td>
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{formatNumber(row.responsesCount)}</td>
                         <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>{row.cpc == null ? '—' : formatMoneyEUR(row.cpc)}</td>

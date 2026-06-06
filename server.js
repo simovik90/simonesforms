@@ -339,7 +339,7 @@ app.get('/api/meta/insights', async (req, res) => {
   try {
     const params = new URLSearchParams({
       access_token: token,
-      fields: 'date_start,date_stop,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,cpc,cpm,ctr',
+      fields: 'date_start,date_stop,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,inline_link_clicks,cpm,ctr',
       level,
       time_increment: String(parsePositiveInt(req.query?.timeIncrement, 1)),
       limit: String(parsePositiveInt(req.query?.limit, 500)),
