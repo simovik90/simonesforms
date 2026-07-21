@@ -12,9 +12,10 @@
 </head>
 <body>
   <div id="app"></div>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Pin Babel 7: Babel 8+ emette import JSX (automatic runtime) e rompe type=text/babel senza module. -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
   <script type="text/babel" data-presets="react" src="/app.jsx"></script>
 </body>
 </html>
